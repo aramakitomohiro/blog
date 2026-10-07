@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AWS Redshift コスト算出手法（経営層向け説明版）</title>
+<link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+<header>
+<div class="wrap">
+<p class="crumb"><a href="../../../">AWS Technical Research</a> / <a href="../../">AWS コスト算出ナレッジ</a></p>
+<h1>AWS Redshift コスト算出手法（経営層向け説明版）</h1>
+<p class="sub">作成日：2026年10月6日 ／ 根拠：AWS公式ドキュメントおよび公式料金ページ（2026年10月6日時点）</p>
+<nav class="switch" aria-label="資料の切り替え"><a class="current" href="./" aria-current="page">経営層向け説明</a><a class="other" href="../">技術詳細</a><a class="other" href="../../dynamodb/executive/">DynamoDB</a></nav>
+</div>
+</header>
+<main>
+<article>
+<p>技術的な詳細・根拠・出典URLは別紙「AWS Redshift 概要とコスト算出手法」を参照： <a href="../">技術詳細版</a></p>
+<h2 id="s2"><strong>1. 要約（1ページサマリー）</strong></h2>
+<p>Redshift（AWSのデータ分析用データベース）の月額コストは、次の要素の「足し算」で決まります。</p>
+<ul><li><strong>① 計算処理の料金：</strong>ノード（サーバー）の台数 × 時間単価 × 稼働時間。Serverless型は「使った処理量（RPU時間）× 単価」。止めている時間は課金されません。</li><li><strong>② データ保管の料金：</strong>保管しているデータ量（GB）× 1GBあたりの月額単価。</li><li><strong>③ バックアップの料金：</strong>有料のバックアップ容量（GB）× 1GBあたりの月額単価 ＋ 別リージョンへのコピー料金。</li><li><strong>④ データ転送の料金：</strong>AWSの外や別リージョンへデータを送った量 × 単価（同じリージョン内のS3とのやり取りは無料）。</li><li><strong>⑤ 追加機能の料金（使った場合のみ）：</strong>同時アクセス急増時の自動増強（無料枠を超えた分）や、外部データの検索量に応じた料金。</li></ul>
+<p><strong><span class="warn">バックアップ料金で最も重要な点：</span></strong>自動バックアップは無料ですが、「手動バックアップ」は有料で、元のサーバーを削除した後も、バックアップを削除するまで課金が続きます。また、課金されるバックアップ容量は「初回のフルコピー ＋ 日々の変更分 × 保存日数分」で増えていくため、保存する世代数（日数）とデータの変更量が料金を左右します。</p>
+<figure><img src="../images/redshift_fig1_cost_breakdown.png" alt="図1 Redshift（1リソース）の月額コストの内訳"><figcaption>図1 Redshift（1リソース）の月額コストの内訳</figcaption></figure>
+<h2 id="s7"><strong>2. 月額コストの計算式（1リソースあたり）</strong></h2>
+<h3 id="s8"><strong>2-1. プロビジョンド型（サーバーを台数で確保する方式）</strong></h3>
+<div class="table-wrap"><table><tr><th><strong>ステップ</strong></th><th><strong>計算式</strong></th><th><strong>数字の意味・入手先</strong></th></tr><tr><td>ステップ1</td><td>計算処理の料金 ＝ ノード台数 × 1時間あたりの単価 × 月の稼働時間</td><td>台数・種類：AWS管理画面／単価：公式料金ページ。一時停止中の時間は除く。2つのデータセンターに冗長化（Multi-AZ）する場合は ×2</td></tr><tr><td>ステップ2</td><td>データ保管の料金 ＝ 保管データ量（GB）× 1GBあたりの月額単価</td><td>データ量：AWS管理画面・監視ツール（CloudWatch）。※DC2型はノード料金に含まれるため0円</td></tr><tr><td>ステップ3</td><td>バックアップの料金 ＝ 3章の計算結果</td><td>3章を参照</td></tr><tr><td>ステップ4</td><td>データ転送の料金 ＝ 転送量（GB）× 1GBあたりの転送単価</td><td>転送量：利用状況から想定／単価：AWSのデータ転送料金</td></tr><tr><td>ステップ5</td><td>追加機能の料金 ＝（自動増強の使用時間 － 無料枠）× 1秒あたり単価 ＋ 外部データ検索量（TB）× 1TBあたり単価</td><td>無料枠：稼働24時間ごとに1時間分（最大30時間まで貯まる）。使わなければ0円</td></tr><tr class="total"><td><strong>合計</strong></td><td><strong>月額コスト ＝ ステップ1 ＋ ステップ2 ＋ ステップ3 ＋ ステップ4 ＋ ステップ5</strong></td><td></td></tr></table></div>
+<p>※1年・3年の長期契約（リザーブド）にすると割引されますが、サーバーを止めていても期間中ずっと課金されます。</p>
+<h3 id="s11"><strong>2-2. Serverless型（使った分だけ払う方式）</strong></h3>
+<div class="table-wrap"><table><tr><th><strong>ステップ</strong></th><th><strong>計算式</strong></th><th><strong>数字の意味・入手先</strong></th></tr><tr><td>ステップ1</td><td>計算処理の料金 ＝ 使った処理能力（RPU）× 使った時間（時間）× 1RPU時間あたりの単価</td><td>RPU＝処理能力の単位。1回あたり最低60秒分は課金。何もしていない時間は0円。実績はシステムの利用履歴（SYS_SERVERLESS_USAGE）で確認</td></tr><tr><td>ステップ2</td><td>データ保管の料金 ＝ 保管データ量（GB）× 1GBあたりの月額単価</td><td>プロビジョンド型と同じ単価体系</td></tr><tr><td>ステップ3</td><td>バックアップの料金 ＝ 3章の計算結果</td><td>24時間以内の自動復旧ポイントは無料</td></tr><tr><td>ステップ4</td><td>データ転送の料金 ＝ 転送量（GB）× 転送単価</td><td>プロビジョンド型と同じ</td></tr><tr class="total"><td><strong>合計</strong></td><td><strong>月額コスト ＝ ステップ1 ＋ ステップ2 ＋ ステップ3 ＋ ステップ4</strong></td><td><strong>自動増強・外部データ検索は①に含まれ、別料金なし</strong></td></tr></table></div>
+<p>※月の使用量に上限（最大RPU時間）を設定でき、「上限 × 単価」が計算処理料金の最大額の目安になります。</p>
+<h2 id="s14"><strong>3. バックアップ料金の計算方法（詳細）</strong></h2>
+<h3 id="s15"><strong>3-1. 無料のバックアップ・有料のバックアップ</strong></h3>
+<div class="table-wrap"><table><tr><th><strong>種類</strong></th><th><strong>料金</strong></th><th><strong>ポイント</strong></th></tr><tr><td>自動バックアップ（プロビジョンド型）</td><td>無料</td><td>最大35日まで保存可能。期限が来ると自動削除</td></tr><tr><td>自動復旧ポイント（Serverless型・24時間以内）</td><td>無料</td><td>30分ごとに自動作成、24時間保持</td></tr><tr><td>手動バックアップ</td><td>有料</td><td>削除するまで課金。元のサーバーを削除・停止しても課金が続く</td></tr><tr><td>DC2型のバックアップ</td><td>クラスター容量までは無料</td><td>クラスターの容量を超えた分が有料</td></tr><tr><td>別リージョンへのコピー</td><td>有料</td><td>転送料（増えた分のみ、コピー元で課金）＋コピー先での保管料</td></tr></table></div>
+<h3 id="s17"><strong>3-2. バックアップ容量はどう増えるか</strong></h3>
+<p>バックアップは毎回まるごと保存されるのではなく、2回目以降は「変わった部分だけ」が追加されます（増分方式）。そのため、課金される容量は次の式で見積もれます。</p>
+<p><strong>バックアップ容量 ＝ 初回のフルコピー ＋ 1日の変更分 ×（保存する世代数 － 1）</strong></p>
+<p>AWS公式料金ページの例（データ10TB、毎日5%（0.5TB）変更、毎日1世代・7世代保存）では、10TB ＋ 0.5TB × 6 ＝ 13TB となり、公式例の「13TB」と一致します。</p>
+<figure><img src="../images/redshift_fig3_snapshot_growth.png" alt="図3 バックアップ容量の増え方（10TB・1日5%変更・7世代保持）"><figcaption>図3 バックアップ容量の増え方（10TB・1日5%変更・7世代保持）</figcaption></figure>
+<p>※この計算式は公式例から読み取れる考え方を整理したものです（AWSが式として明記しているわけではありません）。</p>
+<h3 id="s23"><strong>3-3. 計算の手順</strong></h3>
+<figure><img src="../images/redshift_fig2_backup_flow.png" alt="図2 バックアップ料金の計算手順"><figcaption>図2 バックアップ料金の計算手順</figcaption></figure>
+<div class="table-wrap"><table><tr><th><strong>ステップ</strong></th><th><strong>計算式</strong></th><th><strong>数字の意味・入手先</strong></th></tr><tr><td>ステップ1</td><td>バックアップ容量 ＝ 初回のフルコピー（GB）＋ 1日の変更量（GB）×（世代数 － 1）</td><td>フルコピー＝今のデータ量（AWS管理画面）。変更量＝毎日の増分バックアップの大きさ（管理画面で確認可能）。世代数＝社内の保存ルール</td></tr><tr><td>ステップ2</td><td>有料のバックアップ容量 ＝ ステップ1 － 無料分</td><td>無料分：自動バックアップ・24時間以内の復旧ポイント。DC2型はクラスター容量を差し引く（マイナスなら0）</td></tr><tr><td>ステップ3</td><td>保管料金 ＝ 有料のバックアップ容量（GB）× 1GBあたりの月額単価</td><td>単価：公式料金ページの「Backup storage」（リージョンごとに異なる）</td></tr><tr><td>ステップ4</td><td>リージョン間コピー料金 ＝ 1か月に増えた分（GB）× 1GBあたりの転送単価 ＋ コピー先の保管容量（GB）× コピー先の月額単価</td><td>コピーする場合のみ。初月はフルコピー分の転送が発生</td></tr><tr class="total"><td><strong>合計</strong></td><td><strong>月のバックアップ料金 ＝ ステップ3 ＋ ステップ4</strong></td><td></td></tr></table></div>
+<h2 id="s26"><strong>4. 計算例（説明用）</strong></h2>
+<p><strong><span class="warn">※説明用の仮の数値です。実際の単価は公式料金ページ（<a href="https://aws.amazon.com/redshift/pricing/" target="_blank" rel="noopener">https://aws.amazon.com/redshift/pricing/</a>）で確認してください。</span></strong></p>
+<p>前提：Serverless型（またはRG型）、データ10TB、毎日5%変更、毎日の手動バックアップを7世代保存（容量はAWS公式例のとおり）。単価は「1GBあたり月額〇〇円」を<span class="provisional">仮に</span>3円、転送単価を<span class="provisional">仮に</span>10円として計算します。1TB＝1,024GBで換算。</p>
+<div class="table-wrap"><table><tr><th><strong>ステップ</strong></th><th><strong>計算</strong></th><th><strong>結果</strong></th></tr><tr><td>ステップ1 容量</td><td>10TB ＋ 0.5TB ×（7 － 1）＝ 13TB ＝ 13 × 1,024GB</td><td>13,312GB</td></tr><tr><td>ステップ2 無料分</td><td>手動バックアップのため無料分は差し引かない</td><td>13,312GB</td></tr><tr><td>ステップ3 保管料金</td><td>13,312GB × 3円<span class="provisional">（仮）</span></td><td>39,936円<span class="provisional">（仮）</span></td></tr><tr><td>ステップ4 リージョン間コピー（行う場合）</td><td>転送：0.5TB × 30日 ＝ 15,360GB × 10円<span class="provisional">（仮）</span>＝ 153,600円<br>コピー先保管：13,312GB × 3円<span class="provisional">（仮）</span>＝ 39,936円</td><td>193,536円<span class="provisional">（仮）</span></td></tr><tr class="total"><td><strong>合計</strong></td><td><strong>39,936円 ＋ 193,536円</strong></td><td><strong>233,472円／月<span class="provisional">（仮）</span></strong></td></tr></table></div>
+<p>※Serverless型・RG型では、上記バックアップ料金とは別に、データ本体（10TB）の保管料金（2章のステップ2）がかかります。</p>
+<p>※リージョン間コピーを行わない場合、バックアップ料金はステップ3のみ（例では39,936円<span class="provisional">・仮</span>）です。</p>
+<h2 id="s32"><strong>5. 注意点</strong></h2>
+<ul><li>公式ページの記載が明確でない点があります：①DC2型で自動バックアップが無料枠の計算に含まれるか、②RA3型の手動バックアップで重複部分が差し引かれるか、③コピー先リージョンでの保管料金の扱い、④Serverless型で24時間を超えて保持する復旧ポイントの課金方法。</li><li>そのため、見積もりは「多めに（保守的に）」見積もり、運用開始後に実際の請求額やAWS管理画面のバックアップ使用量と照合して補正することを推奨します。</li><li>単価はリージョンや時期で変わります。最終的な金額は必ず公式料金ページとAWS Pricing Calculatorで確認してください。</li><li>手動バックアップは削除しない限り課金が続くため、保存期間のルール化と定期的な棚卸しが有効です。</li></ul>
+<h2 id="s34"><strong>参考</strong></h2>
+<ul><li>別紙（技術詳細版）：「AWS Redshift 概要とコスト算出手法」 <a href="../">技術詳細版</a></li><li>Amazon Redshift 料金（公式）：<a href="https://aws.amazon.com/redshift/pricing/" target="_blank" rel="noopener">https://aws.amazon.com/redshift/pricing/</a></li><li>Amazon Redshift スナップショットとバックアップ（公式）：<a href="https://docs.aws.amazon.com/redshift/latest/mgmt/working-with-snapshots.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/redshift/latest/mgmt/working-with-snapshots.html</a></li><li>Amazon Redshift Serverless の課金（公式）：<a href="https://docs.aws.amazon.com/redshift/latest/mgmt/serverless-billing.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/redshift/latest/mgmt/serverless-billing.html</a></li><li>別リージョンへのスナップショットコピー（公式）：<a href="https://docs.aws.amazon.com/redshift/latest/mgmt/cross-region-snapshot-copy.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/redshift/latest/mgmt/cross-region-snapshot-copy.html</a></li></ul>
+</article>
+</main>
+<footer>AWS公式公開情報に基づく調査資料。料金は変更されるため、見積もり時は公式料金ページと AWS Pricing Calculator で再確認すること。</footer>
+</body>
+</html>
