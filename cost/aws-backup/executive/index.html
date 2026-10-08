@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AWS Backup コスト算出手法（経営層向け説明版）</title>
+<link rel="stylesheet" href="../../style.css">
+</head>
+<body>
+<header>
+<div class="wrap">
+<p class="crumb"><a href="../../../">AWS Technical Research</a> / <a href="../../">AWS コスト算出ナレッジ</a></p>
+<h1>AWS Backup コスト算出手法（経営層向け説明版）</h1>
+<p class="sub">作成日：2026年10月8日（JST）／ 根拠：AWS Backup 開発者ガイド、AWS Backup 料金ページ、AWS 公式価格表（Price List API・東京リージョン、2026年10月8日取得）、AWS Pricing Calculator の表示内容（2026年10月8日確認）</p>
+<nav class="switch" aria-label="資料の切り替え"><a class="current" href="./" aria-current="page">経営層向け説明</a><a class="other" href="../">技術詳細</a><a class="other" href="../../redshift/executive/">Redshift</a><a class="other" href="../../dynamodb/executive/">DynamoDB</a></nav>
+</div>
+</header>
+<main>
+<article class="awsb">
+<style>
+.awsb{font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo','Noto Sans CJK JP',sans-serif;line-height:1.75;color:#1a1a1a;max-width:960px;margin:0 auto;padding:0 12px;word-break:normal;overflow-wrap:anywhere}
+.awsb h1{font-size:1.6em;line-height:1.4;margin:.6em 0 .4em}
+.awsb h2{font-size:1.3em;border-bottom:2px solid #1f4e79;padding-bottom:.2em;margin:1.8em 0 .6em}
+.awsb h3{font-size:1.08em;margin:1.4em 0 .4em;color:#1f4e79}
+.awsb .meta{color:#555;font-size:.88em}
+.awsb .key{color:#c00000;font-weight:700}
+.awsb .kari{color:#c00000;font-weight:700;border:2px solid #c00000;padding:.4em .7em;border-radius:6px;display:block}
+.awsb .note{background:#f5f7fa;border-left:4px solid #1f4e79;padding:.6em .9em;margin:1em 0;font-size:.95em}
+.awsb .warn{background:#fff4f4;border-left:4px solid #c00000;padding:.6em .9em;margin:1em 0;font-size:.95em}
+.awsb .tbl{overflow-x:auto;margin:.8em 0 1.2em}
+.awsb table{border-collapse:collapse;width:100%;font-size:.92em}
+.awsb th,.awsb td{border:1px solid #c9d1dc;padding:.45em .6em;vertical-align:top;text-align:left}
+.awsb th{background:#e8eef7}
+.awsb tr.total td{background:#fff2cc;font-weight:700}
+.awsb td.num{text-align:right;white-space:nowrap}
+.awsb code{font-family:Consolas,Menlo,monospace;font-size:.9em;background:#f0f2f5;padding:0 .25em;border-radius:3px}
+.awsb pre{background:#f0f2f5;padding:.7em;overflow-x:auto;font-size:.88em;line-height:1.5}
+.awsb figure{margin:1.4em 0;text-align:center}
+.awsb figure svg{width:100%;height:auto;max-width:760px}
+.awsb figcaption{font-size:.9em;color:#333;margin-top:.4em;font-weight:700}
+.awsb .flow{display:flex;flex-wrap:nowrap;align-items:stretch;justify-content:center;gap:8px;text-align:left}
+.awsb .fbox{flex:1 1 0;min-width:0;border-radius:10px;padding:.6em .7em;border:1.5px solid #555;font-size:.9em;line-height:1.5}
+.awsb .fbox b{display:block;font-size:1.02em;margin-bottom:.2em}
+.awsb .arrow{align-self:center;font-size:1.4em;color:#555;flex:0 0 auto}
+.awsb .sum{background:#1f4e79;color:#fff;border-color:#1f4e79;text-align:center}
+.awsb .c1{background:#cfe2ff}.awsb .c2{background:#d1f2d9}.awsb .c3{background:#ffe8b3}.awsb .c4{background:#f8d7da}.awsb .c5{background:#e2d9f3}
+.awsb .steps{counter-reset:s;list-style:none;padding:0}
+.awsb ol,.awsb ul{padding-left:1.4em}
+@media (max-width:600px){.awsb .flow{flex-wrap:wrap}.awsb{font-size:15px}.awsb .arrow{transform:rotate(90deg);flex-basis:100%;text-align:center}.awsb .fbox{max-width:none;flex-basis:100%}}
+
+.awsb .sv-n{display:none}
+@media (max-width:600px){.awsb .tbl table{min-width:540px}}
+@media (max-width:600px){.awsb .sv-w{display:none}.awsb .sv-n{display:inline}.awsb figure svg.sv-n{max-width:420px}}
+</style>
+
+<h1>AWS Backup コスト算出手法（経営層向け説明版）</h1>
+<p class="meta">作成日：2026年10月8日（JST）／根拠：AWS Backup 開発者ガイド、AWS Backup 料金ページ、AWS 公式価格表（Price List API・東京リージョン、2026年10月8日取得）、AWS Pricing Calculator の表示内容（2026年10月8日確認）<br>
+技術者向けの詳細手順：「AWS Backup 処理単位とコスト算出手順（技術者向け）」 <a href="../">技術者向け詳細版を開く</a></p>
+
+<h2>1. 要約</h2>
+<p>これまで Redshift・DynamoDB の「本体の料金」を整理してきましたが、<strong>AWS Backup でバックアップを管理すると、本体とは別にバックアップの料金がかかります</strong>。AWS Backup の料金は次の4つの足し算です。</p>
+<ul>
+<li><strong>① 保管料金：</strong>保管しているバックアップの量（GB）× 1か月あたりの単価。月の平均保管量で計算されます。</li>
+<li><strong>② 復元料金：</strong>バックアップから戻したデータ量（GB）× 単価。戻したときだけ発生します。</li>
+<li><strong>③ リージョン間コピー：</strong>災害対策で別の地域（リージョン）へ送った量（GB）× 転送単価 ＋ 送り先での保管料金。</li>
+<li><strong>④ その他：</strong>復元テスト（1件ごとの定額）、監査機能、コールド保管の早期削除料金など。</li>
+</ul>
+<p class="key">最も重要な点：DynamoDB のバックアップは毎回「まるごと（フルサイズ）」保存されるため、保存する件数がそのまま料金に効きます。長く保存するなら「コールド保管」で保管単価を約7割下げられますが、コールドは最低90日分の料金が必ずかかり、復元時は割高になります。</p>
+<figure data-fig="charges"><div class="flow">
+<div class="fbox c1"><b>① 保管料金</b>保管しているバックアップの量（GB）× 月額単価。ウォーム／コールドで単価が違う</div>
+<div class="arrow">＋</div>
+<div class="fbox c2"><b>② 復元料金</b>戻した（復元した）データ量（GB）× 単価。コールドからの復元は割高</div>
+<div class="arrow">＋</div>
+<div class="fbox c3"><b>③ リージョン間コピー</b>別リージョンへ送った量（GB）× 転送単価 ＋ コピー先での保管料金</div>
+<div class="arrow">＋</div>
+<div class="fbox c4"><b>④ その他（使った場合）</b>復元テスト（1件ごと）、監査（評価1回ごと）、早期削除料金</div>
+<div class="arrow">＝</div>
+<div class="fbox sum"><b>AWS Backup の月額</b>（データベース本体の料金とは別）</div>
+</div><figcaption>図1　AWS Backup で料金がかかるもの</figcaption></figure>
+
+<h2>2. ウォーム保管とコールド保管の違い</h2>
+<p><strong>ウォーム保管</strong>は「すぐ戻せる通常の保管場所」、<strong>コールド保管</strong>は「めったに使わない長期保管用の安い保管場所」です。バックアップは必ずウォームに作られ、設定した日数が過ぎるとコールドへ移り、保存期間が終わると削除されます。</p>
+<figure data-fig="lifecycle"><svg class="sv-w" viewBox="0 0 680 300" role="img" aria-label="ウォームからコールドへの移行と削除のタイムライン" style="font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo','Noto Sans CJK JP',sans-serif" xmlns="http://www.w3.org/2000/svg">
+<rect x="0" y="0" width="680" height="300" fill="#fff"/>
+<text x="340" y="30" text-anchor="middle" font-size="20" font-weight="700" fill="#1a1a1a">バックアップ1件の一生（ライフサイクル）</text>
+<line x1="30" y1="150" x2="650" y2="150" stroke="#555" stroke-width="2"/>
+<polygon points="650,144 662,150 650,156" fill="#555"/>
+<rect x="30" y="95" width="200" height="55" rx="8" fill="#ffd9a8" stroke="#c55a11"/>
+<text x="130" y="120" text-anchor="middle" font-size="17" font-weight="700" fill="#7a3200">ウォーム保管</text>
+<text x="130" y="142" text-anchor="middle" font-size="14" fill="#7a3200">すぐ戻せる・単価は高め</text>
+<rect x="230" y="95" width="380" height="55" rx="8" fill="#cfe2ff" stroke="#1f4e79"/>
+<text x="420" y="120" text-anchor="middle" font-size="17" font-weight="700" fill="#1f4e79">コールド保管（最低90日）</text>
+<text x="420" y="142" text-anchor="middle" font-size="14" fill="#1f4e79">保管は安い・戻すときは割高</text>
+<line x1="30" y1="150" x2="30" y2="175" stroke="#555"/><text x="30" y="195" text-anchor="middle" font-size="14">作成</text>
+<line x1="230" y1="150" x2="230" y2="175" stroke="#555"/><text x="230" y="195" text-anchor="middle" font-size="14">移行日</text>
+<text x="230" y="214" text-anchor="middle" font-size="12.5" fill="#555">MoveToColdStorageAfterDays</text>
+<line x1="610" y1="150" x2="610" y2="175" stroke="#555"/><text x="610" y="195" text-anchor="middle" font-size="14">削除日</text>
+<text x="610" y="214" text-anchor="middle" font-size="12.5" fill="#555">DeleteAfterDays</text>
+<text x="420" y="248" text-anchor="middle" font-size="15" fill="#c00000" font-weight="700">削除日 ≧ 移行日 ＋ 90日（早く消すと残り日数分を請求）</text>
+<text x="340" y="280" text-anchor="middle" font-size="13.5" fill="#333">AWS推奨：ウォームは8日以上。移行後は「移行日」を変更できない</text>
+</svg><svg class="sv-n" viewBox="0 0 380 470" role="img" aria-label="ウォームからコールドへの移行と削除のタイムライン（縦）" style="font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo','Noto Sans CJK JP',sans-serif" xmlns="http://www.w3.org/2000/svg">
+<rect width="380" height="470" fill="#fff"/>
+<text x="190" y="28" text-anchor="middle" font-size="19" font-weight="700">バックアップ1件の一生</text>
+<line x1="40" y1="55" x2="40" y2="400" stroke="#555" stroke-width="2"/><polygon points="34,400 40,412 46,400" fill="#555"/>
+<circle cx="40" cy="60" r="6" fill="#555"/><text x="56" y="66" font-size="16" font-weight="700">作成</text>
+<rect x="56" y="80" width="300" height="70" rx="8" fill="#ffd9a8" stroke="#c55a11"/>
+<text x="206" y="110" text-anchor="middle" font-size="18" font-weight="700" fill="#7a3200">ウォーム保管</text>
+<text x="206" y="136" text-anchor="middle" font-size="15" fill="#7a3200">すぐ戻せる・単価は高め</text>
+<circle cx="40" cy="170" r="6" fill="#555"/><text x="56" y="176" font-size="16" font-weight="700">移行日</text>
+<text x="56" y="196" font-size="13" fill="#555">MoveToColdStorageAfterDays</text>
+<rect x="56" y="210" width="300" height="110" rx="8" fill="#cfe2ff" stroke="#1f4e79"/>
+<text x="206" y="245" text-anchor="middle" font-size="18" font-weight="700" fill="#1f4e79">コールド保管</text>
+<text x="206" y="272" text-anchor="middle" font-size="15" fill="#1f4e79">最低90日・保管は安い</text>
+<text x="206" y="296" text-anchor="middle" font-size="15" fill="#1f4e79">戻すときは割高</text>
+<circle cx="40" cy="345" r="6" fill="#555"/><text x="56" y="351" font-size="16" font-weight="700">削除日</text>
+<text x="56" y="371" font-size="13" fill="#555">DeleteAfterDays</text>
+<text x="190" y="436" text-anchor="middle" font-size="15" fill="#c00000" font-weight="700">削除日 ≧ 移行日 ＋ 90日</text>
+<text x="190" y="460" text-anchor="middle" font-size="13.5" fill="#333">推奨：ウォームは8日以上</text></svg><figcaption>図2　ウォーム保管とコールド保管（AWS Backup のライフサイクル）</figcaption></figure>
+<div class="tbl"><table>
+<tr><th>項目（DynamoDB、東京）</th><th>ウォーム</th><th>コールド</th><th>違い</th></tr>
+<tr><td>保管単価（1GB・1か月）</td><td class="num">0.114 USD</td><td class="num">0.0342 USD</td><td>コールドはウォームの30%（約7割安い）</td></tr>
+<tr><td>復元単価（1GB）</td><td class="num">0.171 USD</td><td class="num">0.228 USD</td><td>コールドからの復元は約1.33倍</td></tr>
+<tr><td>最低保管期間</td><td>なし</td><td>90日</td><td>90日より前に消すと、残り日数分の保管料が請求される</td></tr>
+<tr><td>別リージョンへのコピー</td><td>可能</td><td>不可</td><td>コールドにあるバックアップはコピーできない</td></tr>
+</table></div>
+<ul>
+<li>コールド保管を使えるのは一部の種類だけです：DynamoDB（AWS Backup の「高度な機能」を有効にした場合）、EBS、EFS、Timestream、SAP HANA on EC2、VMware など。<strong>Redshift のバックアップはコールド保管に対応していません。</strong></li>
+<li>AWS Backup の推奨は「ウォームに8日以上置いてからコールドへ移す」ことです。</li>
+</ul>
+
+<h2>3. 簡単な試算（説明用）</h2>
+<p class="kari">説明用の試算です。東京リージョン（ap-northeast-1）の AWS 公式価格表（Price List API、2026年10月8日取得）の単価を使用しています。金額は米ドル・税抜で、単価は変更される可能性があります。実際の見積もりは AWS Pricing Calculator と公式料金ページで確認してください。</p>
+<p>前提：DynamoDB テーブル 1,000GB（1年間で増減なし）を毎日1回バックアップ。金額は AWS Pricing Calculator と同じ計算方法による「1年目の平均月額」です。</p>
+<div class="tbl"><table>
+<tr><th>ケース</th><th>保存のしかた</th><th>月額（1年目の平均）</th></tr>
+<tr><td>A</td><td>30日保存（すべてウォーム）</td><td class="num">3,279 USD</td></tr>
+<tr><td>B</td><td>365日保存（すべてウォーム）</td><td class="num">20,805 USD</td></tr>
+<tr><td>C</td><td>365日保存（ウォーム90日 → コールド275日）</td><td class="num">12,569 USD</td></tr>
+</table></div>
+<figure data-fig="bars"><svg class="sv-w" viewBox="0 0 760 270" role="img" aria-label="保存期間とコールド保管による月額の違い（DynamoDB 1,000GB）" style="font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo','Noto Sans CJK JP',sans-serif" xmlns="http://www.w3.org/2000/svg">
+<rect x="0" y="0" width="760" height="270" fill="#fff"/>
+<text x="380" y="34" text-anchor="middle" font-size="18" font-weight="700">保存期間とコールド保管による月額の違い（DynamoDB 1,000GB）</text>
+<text x="740" y="58" text-anchor="end" font-size="13" fill="#555">単位：USD/月（1年目の平均・説明用の試算）</text>
+<text x="20" y="96" font-size="15">B：365日すべてウォーム</text><rect x="260" y="76" width="380.0" height="32" rx="4" fill="#f4b183"/><text x="648.0" y="98" font-size="15" font-weight="700">20,805</text><text x="20" y="156" font-size="15">C：ウォーム90日＋コールド275日</text><rect x="260" y="136" width="229.6" height="32" rx="4" fill="#5b9bd5"/><text x="497.6" y="158" font-size="15" font-weight="700">12,569</text><text x="20" y="216" font-size="15">A：30日ウォーム</text><rect x="260" y="196" width="59.9" height="32" rx="4" fill="#a9d18e"/><text x="327.9" y="218" font-size="15" font-weight="700">3,279</text></svg><svg class="sv-n" viewBox="0 0 380 314" role="img" aria-label="保存期間とコールド保管による月額の違い（DynamoDB 1,000GB）" style="font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo','Noto Sans CJK JP',sans-serif" xmlns="http://www.w3.org/2000/svg"><rect width="380" height="314" fill="#fff"/><text x="190" y="26" text-anchor="middle" font-size="16" font-weight="700">保存期間とコールドによる違い</text><text x="190" y="48" text-anchor="middle" font-size="13" fill="#555">USD/月（1年目の平均・説明用の試算）</text><text x="16" y="82" font-size="15">B：365日すべてウォーム</text><rect x="16" y="92" width="250.0" height="30" rx="4" fill="#f4b183"/><text x="274.0" y="114" font-size="15" font-weight="700">20,805</text><text x="16" y="160" font-size="15">C：ウォーム90日＋コールド275日</text><rect x="16" y="170" width="151.0" height="30" rx="4" fill="#5b9bd5"/><text x="175.0" y="192" font-size="15" font-weight="700">12,569</text><text x="16" y="238" font-size="15">A：30日ウォーム</text><rect x="16" y="248" width="39.4" height="30" rx="4" fill="#a9d18e"/><text x="63.4" y="270" font-size="15" font-weight="700">3,279</text></svg><figcaption>図3　保存期間とコールド保管による月額の違い（DynamoDB 1,000GB）</figcaption></figure>
+<p>計算ツールには含まれない費用も、必要に応じて足します（同じ前提、説明用）。</p>
+<div class="tbl"><table>
+<tr><th>追加の費用</th><th>計算</th><th>金額</th></tr>
+<tr><td>1,000GB を1回復元（ウォームから）</td><td>1,000GB × 0.171 USD</td><td class="num">171 USD／回</td></tr>
+<tr><td>1,000GB を1回復元（コールドから）</td><td>1,000GB × 0.228 USD</td><td class="num">228 USD／回</td></tr>
+<tr><td>毎日のバックアップを大阪へコピー（転送料）</td><td>1,000GB × 30回 × 0.11 USD</td><td class="num">3,300 USD／月</td></tr>
+<tr><td>大阪での保管（30日保存、ケースAと同条件）</td><td>計算ツールで大阪リージョンを別に見積もり</td><td class="num">約3,279 USD／月</td></tr>
+<tr><td>改ざん防止の特別な保管庫（論理エアギャップ保管庫）</td><td>保管単価が通常の約1.15倍</td><td class="num">ケースAなら約3,771 USD／月</td></tr>
+</table></div>
+<p style="font-size:.9em">※Redshift を同じ条件（1,000GB・30日）で計算ツールに入れると 719 USD／月と表示されます。ただし Redshift のスナップショットは実際には変更部分だけが増える方式で課金されるため、実額はこれより大幅に小さくなる可能性があります（技術者向け資料の8章を参照）。</p>
+
+<h2>4. 主なリスク</h2>
+<ul>
+<li><strong>コールドの90日ルール：</strong>コールドに移したバックアップは最低90日分の保管料がかかります。保存期間を短く変えても、早期削除料金として残りの日数分が請求されます。</li>
+<li><strong>復元料金：</strong>平時は0円でも、障害時に大量に復元すると「復元量 × 単価」が一度に発生します。コールドからの復元はさらに割高です。</li>
+<li><strong>リージョン間コピー：</strong>DynamoDB は毎回まるごとコピーされるため、毎日コピーすると転送料が保管料と同じくらいになることがあります。送り先での保管料も別にかかります。</li>
+<li><strong>二重の保護：</strong>DynamoDB 本体の PITR（35日以内の任意時点に戻せる機能）と AWS Backup を両方使うと、両方に料金がかかります。必要な復旧要件に合わせてどちらか、または両方を選びます。</li>
+<li><strong>計算ツールの対象外：</strong>AWS Pricing Calculator（AWS Backup）は保管料金だけを計算します。復元・転送・監査・特別な保管庫は手計算で足す必要があります。</li>
+</ul>
+
+<h2>5. 見積もりの進め方</h2>
+<ol>
+<li>現在のデータ量、1年間の増加率、1日の変更率、保存期間、コールドの使い方、コピーの有無、想定する復元量を集めます。</li>
+<li>AWS Pricing Calculator（AWS Backup・東京リージョン）に入力し、計算過程（Show calculations）を記録します。</li>
+<li>同じ計算を手計算で再現し、計算ツールに含まれない費用（復元・コピー転送など）を足します。</li>
+<li>両者を照合し、運用開始後は実際の請求（Cost Explorer）と比べて補正します。</li>
+</ol>
+
+<h2>参考資料（公式）</h2>
+<ul>
+<li>技術者向け詳細版：「AWS Backup 処理単位とコスト算出手順（技術者向け）」 <a href="../">技術者向け詳細版を開く</a></li>
+<li>AWS Backup 料金：<a href="https://aws.amazon.com/backup/pricing/">https://aws.amazon.com/backup/pricing/</a></li>
+<li>AWS 公式価格表（AWS Backup・東京）：<a href="https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSBackup/current/ap-northeast-1/index.json">https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSBackup/current/ap-northeast-1/index.json</a></li>
+<li>ライフサイクルとストレージ階層：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/plan-options-and-configuration.html">https://docs.aws.amazon.com/aws-backup/latest/devguide/plan-options-and-configuration.html</a></li>
+<li>リソース別の対応機能：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/backup-feature-availability.html">https://docs.aws.amazon.com/aws-backup/latest/devguide/backup-feature-availability.html</a></li>
+<li>AWS Pricing Calculator：<a href="https://calculator.aws/">https://calculator.aws/</a></li>
+</ul>
+
+</article>
+</main>
+<footer>AWS公式公開情報に基づく調査資料。料金は変更されるため、見積もり時は公式料金ページと AWS Pricing Calculator で再確認すること。</footer>
+</body>
+</html>

@@ -12,7 +12,7 @@
 <p class="crumb"><a href="../../../">AWS Technical Research</a> / <a href="../../">AWS コスト算出ナレッジ</a></p>
 <h1>AWS Redshift コスト算出手法（経営層向け説明版）</h1>
 <p class="sub">作成日：2026年10月6日 ／ 根拠：AWS公式ドキュメントおよび公式料金ページ（2026年10月6日時点）</p>
-<nav class="switch" aria-label="資料の切り替え"><a class="current" href="./" aria-current="page">経営層向け説明</a><a class="other" href="../">技術詳細</a><a class="other" href="../../dynamodb/executive/">DynamoDB</a></nav>
+<nav class="switch" aria-label="資料の切り替え"><a class="current" href="./" aria-current="page">経営層向け説明</a><a class="other" href="../">技術詳細</a><a class="other" href="../../dynamodb/executive/">DynamoDB</a><a class="other" href="../../aws-backup/executive/">AWS Backup</a></nav>
 </div>
 </header>
 <main>
@@ -52,6 +52,7 @@
 <ul><li>公式ページの記載が明確でない点があります：①DC2型で自動バックアップが無料枠の計算に含まれるか、②RA3型の手動バックアップで重複部分が差し引かれるか、③コピー先リージョンでの保管料金の扱い、④Serverless型で24時間を超えて保持する復旧ポイントの課金方法。</li><li>そのため、見積もりは「多めに（保守的に）」見積もり、運用開始後に実際の請求額やAWS管理画面のバックアップ使用量と照合して補正することを推奨します。</li><li>単価はリージョンや時期で変わります。最終的な金額は必ず公式料金ページとAWS Pricing Calculatorで確認してください。</li><li>手動バックアップは削除しない限り課金が続くため、保存期間のルール化と定期的な棚卸しが有効です。</li></ul>
 <h2 id="s34"><strong>参考</strong></h2>
 <ul><li>別紙（技術詳細版）：「AWS Redshift 概要とコスト算出手法」 <a href="../">技術詳細版</a></li><li>Amazon Redshift 料金（公式）：<a href="https://aws.amazon.com/redshift/pricing/" target="_blank" rel="noopener">https://aws.amazon.com/redshift/pricing/</a></li><li>Amazon Redshift スナップショットとバックアップ（公式）：<a href="https://docs.aws.amazon.com/redshift/latest/mgmt/working-with-snapshots.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/redshift/latest/mgmt/working-with-snapshots.html</a></li><li>Amazon Redshift Serverless の課金（公式）：<a href="https://docs.aws.amazon.com/redshift/latest/mgmt/serverless-billing.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/redshift/latest/mgmt/serverless-billing.html</a></li><li>別リージョンへのスナップショットコピー（公式）：<a href="https://docs.aws.amazon.com/redshift/latest/mgmt/cross-region-snapshot-copy.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/redshift/latest/mgmt/cross-region-snapshot-copy.html</a></li></ul>
+<p class="note">バックアップをAWS Backupで取得する場合の費用は<a href="../../aws-backup/executive/">こちら</a>。</p>
 </article>
 </main>
 <footer>AWS公式公開情報に基づく調査資料。料金は変更されるため、見積もり時は公式料金ページと AWS Pricing Calculator で再確認すること。</footer>

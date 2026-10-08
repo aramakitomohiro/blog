@@ -42,3 +42,8 @@ td p:last-child,th p:last-child{margin-bottom:0}
 footer{max-width:1080px;margin:0 auto 36px;padding:0 20px;color:var(--muted);font-size:.9rem}
 @media(max-width:700px){header{padding:20px 14px}main{margin:12px;padding:16px}table{font-size:.84rem}}
 @media print{header .switch,.crumb{display:none}body{background:#fff}main{border:0}}
+/* Keep global element rules from restyling AWS Backup articles.
+   Colors, SVG text, flow boxes and tables stay in each page's .awsb CSS. */
+.awsb,.awsb *{box-sizing:content-box}
+.awsb tr:nth-child(even) td{background:transparent}
+.awsb .warn{color:inherit;font-weight:inherit}

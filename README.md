@@ -21,12 +21,14 @@ AWS公式情報をベースに作成した、バックアップ設計・セキ�
 
 調査基準日：2026-10-06
 
-公式ドキュメントの記載に基づき、Redshift と DynamoDB を 1 リソースとして扱ったときのコスト算出手順を公開。経営層向け説明と技術詳細を対にしている。
+公式ドキュメントの記載に基づき、Redshift と DynamoDB を 1 リソースとして扱ったときのコスト算出手順と、AWS Backup でバックアップを管理する場合の費用の出し方を公開。経営層向け説明と技術詳細を対にしている。
 
 - [Redshift 経営層向け説明](cost/redshift/executive/index.html)
 - [Redshift 技術詳細](cost/redshift/index.html)
 - [DynamoDB 経営層向け説明](cost/dynamodb/executive/index.html)
 - [DynamoDB 技術詳細](cost/dynamodb/index.html)
+- [AWS Backup 経営層向け説明](cost/aws-backup/executive/index.html)
+- [AWS Backup 技術詳細](cost/aws-backup/index.html)
 
 ### 注意
 

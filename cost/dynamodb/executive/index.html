@@ -12,7 +12,7 @@
 <p class="crumb"><a href="../../../">AWS Technical Research</a> / <a href="../../">AWS コスト算出ナレッジ</a></p>
 <h1>Amazon DynamoDB コスト算出手法（経営層向け説明版）</h1>
 <p class="sub">作成日：2026年10月6日 ／ 根拠：AWS公式ドキュメントおよび公式料金ページ（2026年10月6日時点）。</p>
-<nav class="switch" aria-label="資料の切り替え"><a class="current" href="./" aria-current="page">経営層向け説明</a><a class="other" href="../">技術詳細</a><a class="other" href="../../redshift/executive/">Redshift</a></nav>
+<nav class="switch" aria-label="資料の切り替え"><a class="current" href="./" aria-current="page">経営層向け説明</a><a class="other" href="../">技術詳細</a><a class="other" href="../../redshift/executive/">Redshift</a><a class="other" href="../../aws-backup/executive/">AWS Backup</a></nav>
 </div>
 </header>
 <main>
@@ -44,6 +44,7 @@
 <ul><li>公式ページの記載が明確でない点があります：①PITRの課金サイズが月平均か時点値か（公式の例で27GB（平均）と29GBの両方の書き方がある）、②1項目ごとの管理領域（100バイト）がバックアップ・PITRのサイズに含まれるか、③AWS Backupで管理する場合の容量の数え方（DynamoDBの資料に記載なし）、④別リージョンにコピーした先での保管料金の扱い。</li><li>バックアップはインデックス（GSI）を含みませんが、復元はインデックスを含めて課金されるため、復元料金は想定より大きくなることがあります。</li><li>手動バックアップは毎月1日に1か月分がまとめて計上されるため、請求画面では1日に山ができます（仕様です）。</li><li>見積もりは「多めに（保守的に）」行い、運用開始後に実際の請求額（Cost Explorer）と照合して補正することを推奨します。単価はリージョンや時期で変わるため、最終的な金額は必ず公式料金ページとAWS Pricing Calculatorで確認してください。</li></ul>
 <h2 id="s26"><strong>参考</strong></h2>
 <ul><li>別紙（技術詳細版）：「Amazon DynamoDB 概要とコスト算出手法」 <a href="../">技術詳細版</a></li><li>Amazon DynamoDB 料金（公式）：<a href="https://aws.amazon.com/dynamodb/pricing/" target="_blank" rel="noopener">https://aws.amazon.com/dynamodb/pricing/</a></li><li>DynamoDB バックアップの課金（公式）：<a href="https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/backup-restore-billing.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/backup-restore-billing.html</a></li><li>DynamoDB ポイントインタイムリカバリ（公式）：<a href="https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Point-in-time-recovery.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/Point-in-time-recovery.html</a></li><li>読み書きの単位の数え方（公式）：<a href="https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/read-write-operations.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/read-write-operations.html</a></li></ul>
+<p class="note">バックアップをAWS Backupで取得する場合の費用は<a href="../../aws-backup/executive/">こちら</a>。</p>
 </article>
 </main>
 <footer>AWS公式公開情報に基づく調査資料。料金は変更されるため、見積もり時は公式料金ページと AWS Pricing Calculator で再確認すること。</footer>
