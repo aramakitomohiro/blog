@@ -57,11 +57,50 @@
 <div class="table-wrap"><table><tr><th><strong>操作</strong></th><th><strong>丸め単位</strong></th><th><strong>計算方法</strong></th><th><strong>公式の例</strong></th></tr><tr><td>GetItem（読み取り）</td><td>4 KB 切り上げ</td><td>切り上げ後 KB ÷ 4 × 整合性係数（結果整合性 0.5／強い整合性 1／トランザクション 2）</td><td>10 KB → 12 KB → 結果整合性 1.5、強い整合性 3、トランザクション 6</td></tr><tr><td>BatchGetItem</td><td>項目ごとに 4 KB 切り上げ後に合計</td><td>—</td><td>1.5 KB と 6.5 KB → 4 KB ＋ 8 KB ＝ 12 KB</td></tr><tr><td>Query</td><td>返却項目の<strong>合計サイズ</strong>を 4 KB 切り上げ</td><td>—</td><td>合計 40.8 KB → 44 KB</td></tr><tr><td>Scan</td><td><strong>評価した</strong>項目のサイズ（返却ではない）</td><td>—</td><td>—</td></tr><tr><td>PutItem / UpdateItem / DeleteItem</td><td>1 KB 切り上げ</td><td>切り上げ後 KB × 1（トランザクションは × 2）。Put/Update は更新前後の大きい方</td><td>500 バイト → 1 WCU、1.6 KB → 2 WCU、10 KB → 10 WRU（トランザクション 20）</td></tr><tr><td>BatchWriteItem</td><td>項目ごとに 1 KB 切り上げ後に合計</td><td>—</td><td>—</td></tr></table></div>
 <blockquote>注意（公式）:</blockquote>
 <ul><li>存在しない項目の読み取りも容量を消費する。条件付き書き込みが失敗しても容量を消費する。</li><li>取得する属性を絞っても（ProjectionExpression）消費量は変わらない。</li></ul>
+<aside class="easy" id="easy-ddb-unit" aria-label="やさしい説明">
+<p class="easy-kicker">やさしい説明</p>
+<p class="easy-title">読み書きは、決まった大きさの箱に入れて数える</p>
+<p>読み取りは4KBの箱です。中身が4KBより小さくても1箱です。4KBを超えたら、次の箱を足します。書き込みは1KBの箱で、同じように切り上げます。切手で、重さが枠を少しでも超えたら次の料金になるのと同じです。</p>
+<p>強い読み取り（最新であることを保証する読み取り）は、箱の数がそのまま単位です。ふつうの読み取りはその半分です。まとめて成功させる処理（トランザクション）は2倍です。書き込みのトランザクションも2倍です。</p>
+<div class="real">
+<p><span class="real-label">このページの表と同じ数字</span></p>
+<ol>
+<li>10KBの読み取り。10 ÷ 4 ＝ 2 余り 2。余りがあるので箱は3つ。3 × 4 ＝ 12KB。</li>
+<li>強い読み取りは3単位。ふつうの読み取りは 3 ÷ 2 ＝ 1.5単位。トランザクションは 3 × 2 ＝ 6単位。</li>
+<li>1.5KBと6.5KBを一度に読むときは、別々に箱へ入れます。1.5KBは4KB、6.5KBは8KB。4 ＋ 8 ＝ 12KB。</li>
+<li>返ってきた合計が40.8KBなら、40.8 ÷ 4 ＝ 10.2。余りがあるので11箱。11 × 4 ＝ 44KB。</li>
+<li>書き込み500バイトは1KB未満なので1単位。1.6KBは2単位。10KBは10単位。トランザクションなら 10 × 2 ＝ 20単位。</li>
+</ol>
+</div>
+<div class="ex">
+<p><span class="ex-label">説明用のかんたんな数字</span></p>
+<p>3KBの強い読み取りは、4KBに足りないので1単位です。5KBは 4 ＋ 1 なので8KBに切り上げ、8 ÷ 4 ＝ 2単位です。1単位を100万回使って、100万単位あたり10円なら、10円です。</p>
+<p class="ex-note">10円は説明用です。本当の料金表の金額ではありません。</p>
+</div>
+</aside>
+
 <h3 id="s41">3.3 ストレージ量の算出</h3>
 <p>課金ストレージ（GB）＝ Σ（項目の生データサイズ ＋ 項目あたりオーバーヘッド）＋ インデックス分</p>
 <p>項目あたりオーバーヘッド ＝ 100 バイト（全項目）＋ 機能別の追加分（例: グローバルテーブルは 48 バイト追加）</p>
 <p>インデックス項目サイズ ＝ ベーステーブル主キー ＋ インデックスキー ＋ 射影属性 ＋ 100 バイト</p>
 <ul><li>DescribeTable の TableSizeBytes は<strong>項目ごとのオーバーヘッドを含まない</strong>ため、請求（CUR）の値の方が大きくなる（「billing and usage reports」）。TableSizeBytes / IndexSizeBytes は約 6 時間ごとに更新される（API Reference）。</li></ul>
+<aside class="easy" id="easy-ddb-store" aria-label="やさしい説明">
+<p class="easy-kicker">やさしい説明</p>
+<p class="easy-title">1件ごとに、100バイトの札が付く</p>
+<p>保管量は、中身のバイト数だけではありません。すべての項目に100バイトの札（管理のための領域）が付きます。検索用のインデックスは、別の箱としてもう一度数えます。インデックスの1件にも100バイトの札が付きます。</p>
+<p class="word-formula">1件の大きさ ＝ 中身のバイト ＋ 100バイトの札</p>
+<div class="ex">
+<p><span class="ex-label">説明用のかんたんな数字</span></p>
+<ol>
+<li>中身400バイト ＋ 札100バイト ＝ 500バイト。</li>
+<li>1,000件なら 500 × 1,000 ＝ 500,000バイト。</li>
+<li>中身がちょうど100GBでも、札の合計が10GBなら、請求の大きさは 100 ＋ 10 ＝ 110GBです。</li>
+<li>1GBあたり月10円なら 110 × 10円 ＝ 1,100円。</li>
+</ol>
+<p class="ex-note">10円と「札が10GB」は説明用です。本当の札は1件100バイトです。画面に出るTableSizeBytesには、この札が入っていません。</p>
+</div>
+</aside>
+
 <h2 id="s46">4. バックアップの料金算出方法</h2>
 <h3 id="s47">4.1 公式ルールの整理</h3>
 <p><strong>(a) オンデマンドバックアップ（DynamoDB ネイティブ）</strong></p>
@@ -98,8 +137,49 @@
 <p><strong>ステップ 5: 合計</strong></p>
 <p class="formula">C_backup = BK_GBmonth × P_bk ＋ PITR_GBmonth × P_pitr ＋ C_restore ＋ C_awsbackup ＋ C_export</p>
 <p class="formula">C_export = フルエクスポート GB × P_export（または増分処理 GB × P_export_incr）＋ S3 料金</p>
+<aside class="easy" id="easy-ddb-bak" aria-label="やさしい説明">
+<p class="easy-kicker">やさしい説明</p>
+<p class="easy-title">DynamoDBの手動バックアップは、毎回ノート全部</p>
+<p>Redshiftのように「変わったページだけ」ではありません。手動バックアップは、取るたびにノート全部のコピーです。3つ残すと、ほぼ3冊分の料金です。月の途中で消したものは、置いていた日数の分だけにします。</p>
+<p class="word-formula">そのバックアップのGB・月 ＝ 大きさ × 置いていた日数 ÷ 月の日数</p>
+<p>PITR（いつでも少し前に戻せる機能）の料金は、戻せる日数では変わりません。テーブルの大きさだけで決まります。7日にしても35日にしても、同じ大きさなら同じ料金です。止めるまで続きます。</p>
+<p>復元は、戻した量 × 単価です。バックアップと違い、検索用のインデックスも含みます。</p>
+<p>AWS Backupのコールド保管は、倉庫の奥の棚です。家賃は安いですが、出して戻すときは割高で、取り出すのにも時間がかかります。一度奥へ入れたら、最低90日分の家賃が必要です。90日より前に捨てると、残りの日数分も払います。</p>
+<div class="ex">
+<p><span class="ex-label">説明用のかんたんな数字</span></p>
+<ol>
+<li>100GBのノートを3冊、1か月ずっと置く。100 × 3 ＝ 300GB・月。1GBあたり10円なら 300 × 10 ＝ 3,000円。</li>
+<li>100GBを30日のうち15日だけ置く。100 × 15 ÷ 30 ＝ 50GB・月。50 × 10円 ＝ 500円。</li>
+<li>PITRの対象が27GBなら、戻せる日数に関係なく27GB・月。27 × 10円 ＝ 270円。</li>
+<li>29GBを1回復元し、1GBあたり10円なら 29 × 10 ＝ 290円。</li>
+<li>奥の棚を1GBあたり3円とすると、100GBは 100 × 3 ＝ 300円。30日で捨てると、残りは 90 − 30 ＝ 60日。60 ÷ 30 ＝ 2か月分。100 × 3円 × 2 ＝ 600円を、早く捨てた分として足します。</li>
+</ol>
+<p class="ex-note">10円と3円は説明用です。本当の料金表の金額ではありません。3円は10円の30%で、安くなる様子を見るための数字です。</p>
+</div>
+</aside>
+
 <h3 id="s82">4.4 計算例（構造のみ・数値は公式例のサイズ）</h3>
 <ul><li>料金ページの例に基づくサイズ: オンデマンドバックアップ合計 60 GB、10 日目に 15 GB 削除 → BK_GBmonth ＝ 60 − 15 × 20 ÷ 30 ＝ 50。PITR 対象のテーブル平均 27 GB（例による）→ PITR_GBmonth ＝ 27。月末に 29 GB を復元 → S_rst ＝ 29。</li><li>C_backup ＝ 50 × P_bk ＋ 27 × P_pitr ＋ 29 × P_restore（単価は料金ページで確認）。</li></ul>
+<aside class="easy" id="easy-ddb-ex44" aria-label="やさしい説明">
+<p class="easy-kicker">やさしい説明</p>
+<p class="easy-title">50GB・月は、60から10を引いた数</p>
+<div class="real">
+<p><span class="real-label">このページの公式サイズの例</span></p>
+<ol>
+<li>30日の月に、バックアップ合計60GBがある。</li>
+<li>10日目に15GBを消すと、消したあとは 30 − 10 ＝ 20日。</li>
+<li>消した分の残りは 15 × 20 ÷ 30。まず 15 × 20 ＝ 300。300 ÷ 30 ＝ 10。</li>
+<li>60 − 10 ＝ 50。だから50GB・月です。</li>
+<li>PITRは平均27GBなので27GB・月。月末の復元は29GBです。</li>
+</ol>
+</div>
+<div class="ex">
+<p><span class="ex-label">説明用のかんたんな数字</span></p>
+<p>1GBあたり、手動バックアップ10円、PITR10円、復元10円とすると、50 × 10 ＝ 500円、27 × 10 ＝ 270円、29 × 10 ＝ 290円。合計 500 ＋ 270 ＋ 290 ＝ 1,060円です。</p>
+<p class="ex-note">10円は説明用です。本当の料金表の金額ではありません。</p>
+</div>
+</aside>
+
 <h3 id="s84">4.5 曖昧な点・注意点（公式記載の解釈）</h3>
 <ol><li><strong>PITR の課金サイズの基準</strong>: 料金ページは「各テーブルのサイズ（テーブルデータ＋LSI）」と記載するが、項目ごとのストレージオーバーヘッドを含むかは明記されていない。また料金ページの 2 つの例で、一方は「平均テーブルサイズ 27 GB」、もう一方は「テーブルサイズ 29 GB」を用いており、月平均か時点値かの説明が揃っていない。月平均（継続監視）で見積もり、CUR の TimedPITRStorage-ByteHrs 実績で確認することを推奨。</li><li><strong>オンデマンドバックアップのサイズと TableSizeBytes の関係</strong>: バックアップサイズに項目オーバーヘッドが含まれるかは明記されていない。DescribeTable の値はオーバーヘッドを含まないため、見積もりは過小になり得る。</li><li><strong>バックアップは GSI を含まないが、復元は GSI を含めて課金</strong>: 公式記載どおりだが、GSI が大きいテーブルでは復元料金がバックアップサイズから想像されるより大きくなる。</li><li><strong>AWS Backup 管理バックアップのサイズ算定方式</strong>（フルか増分か）は DynamoDB 側の資料に記載がなく、AWS Backup の資料・料金ページでの確認が必要（本調査の対象外）。</li><li><strong>ストレージ無料枠の扱い</strong>: 料金ページの無料枠説明は「プロビジョンドキャパシティと Standard テーブルクラスを使用」と記載する一方、オンデマンドの例でも 25 GB の無料枠を差し引いている。ストレージ無料枠がキャパシティモードに依存するかは記載が揃っていない。本書のテンプレートでは無料枠を考慮しない（保守的）。</li><li><strong>クロスリージョンのコピー・復元</strong>: AWS Backup のクロスリージョンコピー転送は転送元アカウントに課金と明記。宛先リージョンでのバックアップ保管料はそのリージョンのウォーム／コールド単価で発生すると考えられるが、DynamoDB 側の資料には明示がない。</li></ol>
 <h2 id="s86">5. 1 リソース（1 テーブル）としての総コスト算出テンプレート</h2>
@@ -107,12 +187,62 @@
 <p>1 回の読み取り単位 ＝ 切り上げ(項目サイズ KB ÷ 4) × 整合性係数（0.5 / 1 / 2）</p>
 <p>1 回の書き込み単位 ＝ 切り上げ(項目サイズ KB ÷ 1) × トランザクション係数（1 / 2）</p>
 <p>GSI 書き込み単位 ＝ 影響を受ける GSI ごとに、インデックス項目サイズで同様に算出（キー値変更時は 2 回）</p>
+<aside class="easy" id="easy-ddb-convert" aria-label="やさしい説明">
+<p class="easy-kicker">やさしい説明</p>
+<p class="easy-title">1回の読み書きを、箱の数に直す</p>
+<p>読み取り1回の単位は「項目のKBを4で割って切り上げた数 × 係数」です。係数は、ふつうの読み取りが0.5（半分）、強い読み取りが1、トランザクションが2です。</p>
+<p>書き込み1回の単位は「KBを1で割って切り上げた数 × 係数」です。ふつうは1、トランザクションは2です。</p>
+<p>検索用のインデックスにも書き込みが及ぶときは、そのインデックスの大きさで、もう一度同じ計算をします。キーが変わって入れ直すときは2回分です。</p>
+<div class="ex">
+<p><span class="ex-label">説明用のかんたんな数字</span></p>
+<ol>
+<li>8KBを強く読む。8 ÷ 4 ＝ 2。余りはないので2単位。ふつうの読み取りなら 2 × 0.5 ＝ 1単位。</li>
+<li>1.2KBを書く。1KBを超えるので2単位。トランザクションなら 2 × 2 ＝ 4単位。</li>
+</ol>
+<p class="ex-note">この枠は単位の数え方です。円は付けていません。</p>
+</div>
+</aside>
+
 <h3 id="s91">5.2 オンデマンドモード（月額）</h3>
 <p class="formula">C_total = C_read + C_write + C_storage + C_backup + C_stream + C_cdc + C_dax + C_global + C_export/import + C_transfer + C_other</p>
 <div class="table-wrap"><table><tr><th><strong>項目</strong></th><th><strong>計算式</strong></th><th><strong>備考</strong></th></tr><tr><td>C_read</td><td>月間 RRU 合計 ÷ 1,000,000 × P_RRU（100 万 RRU あたり）</td><td>月間 RRU ＝ Σ（読み取り回数 × 1 回の読み取り単位）</td></tr><tr><td>C_write</td><td>（テーブル WRU ＋ GSI WRU）÷ 1,000,000 × P_WRU</td><td>LSI 書き込みはテーブル側に計上</td></tr><tr><td>C_storage</td><td>月平均ストレージ GB（テーブル＋全インデックス、オーバーヘッド込み）× P_storage（テーブルクラス別）</td><td></td></tr><tr><td>C_backup</td><td>4.3 の式</td><td></td></tr><tr><td>C_stream</td><td>max(0, GetRecords 回数 − 無料分) ÷ 100,000 × P_stream（10 万リクエストあたり）</td><td>Lambda トリガー・グローバルテーブル経由は無料</td></tr><tr><td>C_cdc</td><td>CDC ユニット数 ÷ 1,000,000 × P_cdc ＋ Kinesis/Glue 料金</td><td>書き込み 1 KB ごとに 1 ユニット</td></tr><tr><td>C_dax</td><td>ノード数 × P_dax_node_hour × 稼働時間（切り上げ）</td><td></td></tr><tr><td>C_global</td><td>各レプリカリージョンの rWRU ÷ 1,000,000 × P_rWRU ＋ 各リージョンのストレージ・読み取り ＋ レプリカ追加時の復元 GB × P_restore</td><td>リージョン間レプリケーション転送は無料</td></tr><tr><td>C_export/import</td><td>エクスポート GB × P_export ＋ インポート GB（非圧縮）× P_import ＋ S3 料金</td><td></td></tr><tr><td>C_transfer</td><td>リージョン間・インターネットへの転送 GB × 転送単価</td><td>同一リージョン内 AWS サービス間は無料</td></tr></table></div>
+<aside class="easy" id="easy-ddb-ondemand" aria-label="やさしい説明">
+<p class="easy-kicker">やさしい説明</p>
+<p class="easy-title">オンデマンドは、使った単位を100万で割ってからかける</p>
+<p>読み書きは、月の単位数を100万で割り、100万単位あたりの単価をかけます。使わなければ0円です。保管は、平均のGB × 1GBの月額です。バックアップは4章の合計を足します。</p>
+<div class="ex">
+<p><span class="ex-label">説明用のかんたんな数字</span></p>
+<ol>
+<li>読み取り200万単位。200万 ÷ 100万 ＝ 2。100万あたり10円なら 2 × 10 ＝ 20円。</li>
+<li>書き込み100万単位。100万 ÷ 100万 ＝ 1。1 × 10円 ＝ 10円。</li>
+<li>保管100GB × 10円 ＝ 1,000円。</li>
+<li>バックアップを2,000円、転送を0円とする。</li>
+<li>合計は 20 ＋ 10 ＋ 1,000 ＋ 2,000 ＋ 0 ＝ 3,030円。</li>
+</ol>
+<p class="ex-note">10円と2,000円は説明用です。本当の料金表の金額ではありません。</p>
+</div>
+</aside>
+
 <h3 id="s94">5.3 プロビジョンドモード（月額）</h3>
 <p class="formula">C_total = C_capacity + C_storage + C_backup + C_stream + C_cdc + C_dax + C_global + C_export/import + C_transfer + C_other</p>
 <div class="table-wrap"><table><tr><th><strong>項目</strong></th><th><strong>計算式</strong></th><th><strong>備考</strong></th></tr><tr><td>C_capacity</td><td>Σ_時間（プロビジョン RCU × P_RCU_hour ＋ プロビジョン WCU × P_WCU_hour）＋ 各 GSI の同様の計算</td><td>消費量ではなく<strong>設定値</strong>で課金。Auto Scaling 利用時は時間ごとの設定値の推移で計算</td></tr><tr><td>必要容量の見積もり</td><td>必要 WCU ＝ 1 秒あたり書き込み回数 × 1 回の書き込み単位 ÷ 目標使用率</td><td>例: 目標 70% なら ÷ 0.7</td></tr><tr><td>リザーブド容量</td><td>一時金 ÷ 期間月数 ＋ 予約数 × 予約時間単価 × 月の時間数 ＋ 予約超過分 × 通常単価</td><td>100 単位で購入、Standard-IA 不可、使用有無にかかわらず課金</td></tr><tr><td>C_global</td><td>各レプリカリージョンの rWCU × P_rWCU_hour × 時間 ＋ …</td><td>rWCU はリザーブド対象外</td></tr><tr><td>その他</td><td>オンデマンドと同じ</td><td></td></tr></table></div>
+<aside class="easy" id="easy-ddb-prov" aria-label="やさしい説明">
+<p class="easy-kicker">やさしい説明</p>
+<p class="easy-title">プロビジョンドは、確保した席の料金</p>
+<p>払うのは、実際に座った人数ではなく、用意した席の数です。席の数 × 1時間の単価 × 時間、を読み取りと書き込みで出して足します。自動で席を増減している月は、時間ごとの席の数で計算します。</p>
+<p>目標の使用率が70%なら、必要な回数を0.7で割って席を決めます。0.7は70%、つまり100分の70です。予約購入は定期券で、使わなくても予約した分は払います。</p>
+<div class="ex">
+<p><span class="ex-label">説明用のかんたんな数字</span></p>
+<ol>
+<li>1秒に7回書きたい。70%まで使うなら、席は 7 ÷ 0.7 ＝ 10。検算は 10 × 0.7 ＝ 7。</li>
+<li>読み取りの席10 × 1時間1円 × 720時間。10 × 1 × 720 ＝ 7,200円。</li>
+<li>書き込みの席5 × 1時間2円 × 720時間。5 × 2 ＝ 10。10 × 720 ＝ 7,200円。</li>
+<li>読み書きの合計は 7,200 ＋ 7,200 ＝ 14,400円。保管とバックアップは、オンデマンドと同じように足します。</li>
+</ol>
+<p class="ex-note">1円と2円は説明用です。本当の料金表の金額ではありません。</p>
+</div>
+</aside>
+
 <h3 id="s97">5.4 入力値チェックリスト（どこで取得するか）</h3>
 <div class="table-wrap"><table><tr><th><strong>入力値</strong></th><th><strong>取得元</strong></th></tr><tr><td>リージョン別単価（RRU/WRU、RCU/WCU 時間、rWRU/rWCU、ストレージ、バックアップ、PITR、復元、Streams、CDC、エクスポート／インポート、DAX ノード時間、リザーブド）</td><td>公式料金ページ <a href="https://aws.amazon.com/dynamodb/pricing/" target="_blank" rel="noopener">https://aws.amazon.com/dynamodb/pricing/</a> （オンデマンド／プロビジョンドのタブ、リージョン選択）、AWS Pricing Calculator</td></tr><tr><td>AWS Backup のウォーム／コールド／復元／コピー単価</td><td>AWS Backup 料金ページ</td></tr><tr><td>キャパシティモード、テーブルクラス、GSI/LSI 構成、ストリーム設定、レプリカ</td><td>コンソール／DescribeTable（BillingModeSummary、TableClassSummary、GlobalSecondaryIndexes、LocalSecondaryIndexes、StreamSpecification、Replicas）</td></tr><tr><td>テーブル・インデックスのサイズと項目数</td><td>DescribeTable（TableSizeBytes、IndexSizeBytes、ItemCount。約 6 時間ごと更新・オーバーヘッド非含有）</td></tr><tr><td>平均項目サイズ</td><td>TableSizeBytes ÷ ItemCount（目安）、アプリ設計値</td></tr><tr><td>読み書きの消費量</td><td>CloudWatch ConsumedReadCapacityUnits / ConsumedWriteCapacityUnits（Sum 統計を使用。GSI は GlobalSecondaryIndexName ディメンション、レプリケーション分は Source=GlobalTable）</td></tr><tr><td>プロビジョン設定値の推移</td><td>CloudWatch ProvisionedReadCapacityUnits / ProvisionedWriteCapacityUnits、Auto Scaling 設定</td></tr><tr><td>ストリーム読み取り・CDC</td><td>CloudWatch ReturnedRecordsCount / ReturnedBytes（GetRecords）、ConsumedChangeDataCaptureUnits</td></tr><tr><td>TTL 削除件数</td><td>CloudWatch TimeToLiveDeletedItemCount</td></tr><tr><td>バックアップ一覧とサイズ</td><td>コンソールのバックアップ画面、ListBackups / DescribeBackup、AWS Backup コンソール</td></tr><tr><td>PITR 設定（有効／復旧期間）</td><td>DescribeContinuousBackups、コンソール</td></tr><tr><td>実績請求の検証</td><td>Cost Explorer／Cost and Usage Report（UsageType 例: ReadRequestUnits、WriteCapacityUnit-Hrs、TimedStorage-ByteHrs、TimedBackupStorage-ByteHrs、TimedPITRStorage-ByteHrs、RestoreDataSize-Bytes、WarmStorage-ByteHrs-DynamoDB、ColdStorage-ByteHrs-DynamoDB）</td></tr></table></div>
 <h3 id="s99">5.5 コスト最適化ポイント（公式記載より）</h3>
