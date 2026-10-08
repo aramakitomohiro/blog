@@ -42,6 +42,29 @@ td p:last-child,th p:last-child{margin-bottom:0}
 footer{max-width:1080px;margin:0 auto 36px;padding:0 20px;color:var(--muted);font-size:.9rem}
 @media(max-width:700px){header{padding:20px 14px}main{margin:12px;padding:16px}table{font-size:.84rem}}
 @media print{header .switch,.crumb{display:none}body{background:#fff}main{border:0}}
+.easy{margin:1rem 0 1.35rem;padding:.9rem 1rem 1rem;background:#f3faf4;border:1px solid #b7e0c2;border-left:5px solid #1a7f37;border-radius:12px;box-sizing:border-box;max-width:100%}
+.easy *{box-sizing:border-box}
+.easy p{margin:.45rem 0}
+.easy .easy-kicker{display:inline-block;margin:0 0 .4rem;padding:2px 10px;background:#1a7f37;color:#fff;border-radius:999px;font-size:.78rem;font-weight:700;line-height:1.6}
+.easy .easy-title{margin:.1rem 0 .45rem;color:#0f5c28;font-size:1.05rem;font-weight:700;line-height:1.45}
+.easy .easy-sub{margin:.85rem 0 .3rem;color:#0f5c28;font-weight:700}
+.easy .word-formula{margin:.55rem 0;padding:.55rem .7rem;background:#fff;border-radius:8px;font-weight:700;line-height:1.6;overflow-x:auto}
+.easy .ex,.easy .real{margin:.7rem 0 .15rem;padding:.65rem .75rem .45rem;background:#fff;border-radius:8px}
+.easy .ex{border:1px dashed #7dcaa0}
+.easy .real{border:1px solid #b9d0f0}
+.easy .ex-label,.easy .real-label{display:inline-block;margin:0 0 .35rem;padding:1px 8px;border-radius:4px;font-size:.82rem;font-weight:700}
+.easy .ex-label{background:#fff4d6;color:#6b4a00}
+.easy .real-label{background:#e7f0ff;color:#1f4e79}
+.easy ol,.easy ul{margin:.25rem 0 .35rem;padding-left:1.25rem}
+.easy li{margin:.28rem 0}
+.easy .ex-note{color:#59636e;font-size:.88rem}
+.stair{display:flex;align-items:flex-end;gap:8px;max-width:420px;margin:.7rem 0 .25rem}
+.stair-col{flex:1 1 0;min-width:0;text-align:center}
+.stair .bar{display:flex;align-items:flex-end;justify-content:center;background:#d8f3df;border:1px solid #1a7f37;border-radius:8px 8px 0 0;color:#0f5c28;font-weight:700;font-size:.85rem;line-height:1.2;padding:0 2px 4px}
+.stair .h1{height:36px}.stair .h2{height:64px}.stair .h3{height:92px}.stair .h4{height:120px}
+.stair-d{border-top:2px solid #1a7f37;padding-top:3px;font-size:.8rem}
+.awsb .easy,.awsb .easy *{box-sizing:border-box}
+@media(max-width:700px){.easy{padding:.8rem .75rem .85rem}.easy .easy-title{font-size:1rem}.stair{max-width:100%}}
 /* Keep global element rules from restyling AWS Backup articles.
    Colors, SVG text, flow boxes and tables stay in each page's .awsb CSS. */
 .awsb,.awsb *{box-sizing:content-box}

@@ -74,29 +74,166 @@
 <p class="formula">推定する場合: S_bill ≈ S_full + S_full × r_change × (N_snap − 1)   ※増分方式を前提とした近似（4.5 参照）</p>
 <ul><li>DC2（プロビジョンド容量までは無料枠）:</li></ul>
 <p class="formula">S_bill = max(0, S_backup_total − S_prov)</p>
+<aside class="easy" id="easy-rs-bill" aria-label="やさしい説明">
+<p class="easy-kicker">やさしい説明</p>
+<p class="easy-title">バックアップの量は、ノートのコピーと同じ足し算で考える</p>
+<p>Redshift の手動バックアップは、毎回ノートを最初から書き写すのではありません。最初の1回だけ全部をコピーし、2回目からは変わったページだけを足します。同じページが複数のコピーに入っていても、料金では1回だけ数えます。</p>
+<p class="word-formula">バックアップの量 ＝ 最初の全部 ＋ 1日に変わった量 ×（残す回数 − 1）</p>
+<p>「残す回数 − 1」は、最初の全部コピーのあとに、変わった分を何回足すか、です。3回残すなら、足すのは2回です。</p>
+<p>DC2型は、サーバーについている棚の容量まではバックアップ置き場の料金がありません。棚からはみ出した分だけが有料です。引き算の答えが0より小さいときは、有料分は0にします。</p>
+<div class="ex">
+<p><span class="ex-label">説明用のかんたんな数字</span></p>
+<p>データ100GB。1日に10GB変わる。3回分残す。置き場は1GBあたり月10円。</p>
+<ol>
+<li>最初の全部は100GB。</li>
+<li>足す回数は 3 − 1 ＝ 2回。</li>
+<li>変わった分は 10GB × 2 ＝ 20GB。</li>
+<li>バックアップの量は 100 ＋ 20 ＝ 120GB。</li>
+<li>料金は 120 × 10円 ＝ 1,200円。</li>
+</ol>
+<p>DC2型で、サーバーの棚が100GB、バックアップの合計が120GBなら、有料は 120 − 100 ＝ 20GB。20 × 10円 ＝ 200円です。合計が80GBなら 80 − 100 は0より小さいので、有料は0円です。</p>
+<p class="ex-note">10円は説明用です。本当の料金表の金額ではありません。</p>
+</div>
+<div class="real">
+<p><span class="real-label">このページに書いてある公式の例</span></p>
+<p>データ10TB、1日に5%変わる、7回分残す、という公式料金ページの例です。</p>
+<ol>
+<li>1日の変化は 10TB × 0.05 ＝ 0.5TB。0.05は5%、つまり100分の5です。</li>
+<li>7回残すので、変わった分を足すのは 7 − 1 ＝ 6回。</li>
+<li>0.5TB × 6 ＝ 3TB。</li>
+<li>10TB ＋ 3TB ＝ 13TB。ページの「13TB」と一致します。</li>
+</ol>
+</div>
+</aside>
+
 <p><strong>ステップ 3: GB-月に換算する</strong>（容量が月内で変動する場合）</p>
 <p class="formula">S_GBmonth = Σ(各時点のスナップショット容量 GB × その継続時間 h) ÷ H_month</p>
 <p>（料金ページの RMS 例と同じ「GB-時 ÷ 月の時間数」の換算方法を適用）</p>
+<aside class="easy" id="easy-rs-gbmonth" aria-label="やさしい説明">
+<p class="easy-kicker">やさしい説明</p>
+<p class="easy-title">月の途中で量が増えても、時間で平均する</p>
+<p>貸し倉庫は、箱1個を1か月置くと1か月分の家賃です。月の途中で箱の数が変わるときは、「その数 × 置いていた時間」を全部足し、月の時間数で割ります。これをGB・月と呼びます。1か月ずっと同じ量なら、GB・月はGBの数と同じです。</p>
+<p class="word-formula">月の平均の量 ＝（それぞれの量 × 続いた時間）の合計 ÷ 月の時間数</p>
+<div class="ex">
+<p><span class="ex-label">説明用のかんたんな数字</span></p>
+<p>1か月を720時間とします。前半の360時間は100GB、後半の360時間は200GB。1GBあたり月10円。</p>
+<ol>
+<li>前半は 100 × 360 ＝ 36,000。</li>
+<li>後半は 200 × 360 ＝ 72,000。</li>
+<li>合計は 36,000 ＋ 72,000 ＝ 108,000。</li>
+<li>108,000 ÷ 720 ＝ 150。この月は150GB・月です。</li>
+<li>料金は 150 × 10円 ＝ 1,500円。</li>
+</ol>
+<p class="ex-note">10円と720時間は説明用です。本当の料金表の金額ではありません。</p>
+</div>
+</aside>
+
 <p><strong>ステップ 4: 月額を計算する</strong></p>
 <p class="formula">C_backup = S_GBmonth × P_snap                         … ソースリージョンの保管料</p>
 <p class="formula">         + ΔS_month × P_xfer                          … クロスリージョン転送（増分のみ、ソース側で課金）</p>
 <p class="formula">         + S_dst_GBmonth × P_snap_dst                 … 宛先リージョンでのコピー保管料（4.5 参照）</p>
 <ul><li>初月（クロスリージョンコピー開始時）は ΔS_month ≒ S_full（初回フルコピー）として見積もり、2 か月目以降は増分（S_full × r_change × 日数）で見積もる。</li><li>宛先側の保管量 S_dst は宛先の保持期間（自動はデフォルト 7 日）を N_days として同じ推定式で算出する。</li></ul>
+<aside class="easy" id="easy-rs-cbak" aria-label="やさしい説明">
+<p class="easy-kicker">やさしい説明</p>
+<p class="easy-title">バックアップの請求は、最大3つのかけ算を足す</p>
+<p>請求は次の3つを足します。コピーしない月は、あとの2つは0円です。</p>
+<ol>
+<li>今の場所の保管料 ＝ 月の平均の量 × 1GBあたりの月額。</li>
+<li>別の地域へ送る料金 ＝ その月に送った量 × 1GBあたりの送料。送るのは増えた分だけです。</li>
+<li>送り先の保管料 ＝ 送り先に置いている量 × 送り先の1GBあたりの月額。</li>
+</ol>
+<p>コピーを始めた最初の月は、ノート全部を1回送ります。2か月目からは、新しく変わった分だけを送ります。1日に変わった量 × その月の日数、です。同じ場所が毎日変わっても、送った日の分はそれぞれ数えます。</p>
+<p>サーバーを消したり止めたあとも、手動バックアップを消すまでは保管料が続きます。ロッカーに荷物を残しているあいだは、店を閉めても家賃がかかるのと同じです。</p>
+<div class="ex">
+<p><span class="ex-label">説明用のかんたんな数字</span></p>
+<p>保管100GB、1GBあたり月10円。送料は1GBあたり5円。最初の月は全部の100GBを送る。</p>
+<ol>
+<li>保管料は 100 × 10円 ＝ 1,000円。</li>
+<li>最初の月の送料は 100 × 5円 ＝ 500円。</li>
+<li>送り先の保管も 100 × 10円 ＝ 1,000円。</li>
+<li>合計は 1,000 ＋ 500 ＋ 1,000 ＝ 2,500円。</li>
+</ol>
+<p>2か月目に、1日1GBだけ変わるなら、30日で 1 × 30 ＝ 30GBを送ります。送料は 30 × 5円 ＝ 150円です。</p>
+<p class="ex-note">10円と5円は説明用です。本当の料金表の金額ではありません。</p>
+</div>
+</aside>
+
 <p><strong>ステップ 5: 削除・一時停止時の扱いを加算する</strong></p>
 <ul><li>クラスター削除後も手動スナップショット（最終スナップショット含む）は削除まで課金が継続するため、廃止後の月にも C_backup を計上する。</li><li>プロビジョンドクラスター一時停止中もバックアップストレージは課金。</li></ul>
 <h3 id="s68">4.4 計算例（構造のみ・数値は仮）</h3>
 <ul><li>例: Serverless、S_full = 1,000 GB、r_change = 0.02、日次手動スナップショット 14 世代保持の場合</li></ul>
 <ul><li>S_bill ≈ 1,000 + 1,000 × 0.02 × 13 = 1,260 GB</li><li>C_backup ≈ 1,260 × P_snap（＋クロスリージョンコピーがあれば転送料・宛先保管料）</li></ul>
 <ul><li>P_snap の実値は利用リージョンの料金ページで確認すること（本書では具体額を示さない）。</li></ul>
+<aside class="easy" id="easy-rs-ex44" aria-label="やさしい説明">
+<p class="easy-kicker">やさしい説明</p>
+<p class="easy-title">上の計算例を、かけ算の順番どおりに追う</p>
+<div class="real">
+<p><span class="real-label">このページの計算例（1,000GB、変化0.02、14回）</span></p>
+<ol>
+<li>0.02は2%です。100分の2、という意味です。1日の変化は 1,000GB × 0.02 ＝ 20GB。</li>
+<li>14回残します。最初の1回は全部なので、変わった分を足すのは 14 − 1 ＝ 13回。</li>
+<li>20GB × 13 ＝ 260GB。</li>
+<li>1,000 ＋ 260 ＝ 1,260GB。ページの式と同じです。</li>
+</ol>
+</div>
+<div class="ex">
+<p><span class="ex-label">説明用のかんたんな数字</span></p>
+<p>この1,260GBを、1GBあたり月10円の倉庫に置くと、1,260 × 10円 ＝ 12,600円です。</p>
+<p class="ex-note">10円は説明用です。本当の料金表の金額ではありません。単価そのものは、使う地域の公式料金ページで確認します。</p>
+</div>
+</aside>
+
 <h3 id="s72">4.5 曖昧な点・注意点（公式記載の解釈）</h3>
 <ol><li><strong>自動スナップショットの無料範囲</strong>: 料金ページは「自動スナップショットは無料（最大 35 日）」と記載する一方、DC/DS については「プロビジョンドストレージ容量を超えるバックアップストレージは課金」と記載しており、自動スナップショットがこの容量計算に含まれるかは明示されていない。DC2 では保守的に「自動＋手動の合計 − S_prov」で見積もり、請求で確認することを推奨。</li><li><strong>RA3 の手動スナップショットの算定方法</strong>: RG/Serverless は「ユニークブロック（重複排除）」と明記されているが、RA3 は「標準 S3 単価のバックアップストレージ」とのみ記載され、重複排除の有無は明示されていない（例示の「30 TB の手動スナップショット」の数え方も不明）。実測値（describe-storage、コンソール）を優先すること。</li><li><strong>単価の名称の違い</strong>: Serverless/RG は「スナップショット単価（snapshot rate）」、RA3・DC/DS は「標準 S3 単価」と表現が異なる。料金ページの該当リージョン表で対象の単価を確認すること。</li><li><strong>Serverless リカバリーポイントの 24 時間超保持</strong>: Management Guide は「リカバリーポイントは 24 時間保持」とし、料金ページは「24 時間を超えて保持する場合は RMS として課金」と記載。24 時間超保持の具体的手段（スナップショット化等）と課金単価の関係は公式に明確でない。</li><li><strong>宛先リージョンでのコピー保管料</strong>: 料金ページは転送料金（ソース側課金・増分のみ）を明記しているが、宛先リージョンに保存されたコピーのストレージ料金については明示的な記載が見当たらない。保守的に宛先リージョンのスナップショット単価で計上し、請求で確認することを推奨。</li><li><strong>クロスリージョンコピーと Serverless</strong>: Serverless のスナップショットレプリケーションは「料金ページ記載の転送単価で課金」とある。</li></ol>
 <h2 id="s74">5. 1 リソースとしての総コスト算出テンプレート</h2>
 <h3 id="s75">5.1 プロビジョンドクラスター（月額）</h3>
 <p class="formula">C_total = C_compute + C_RMS + C_CS + C_spectrum + C_backup + C_transfer + C_other</p>
 <div class="table-wrap"><table><tr><th><strong>項目</strong></th><th><strong>計算式</strong></th><th><strong>備考</strong></th></tr><tr><td>C_compute（オンデマンド）</td><td>N_nodes × P_node_hour × H_run × M_AZ</td><td>H_run = 当月の稼働時間（一時停止時間を除く、秒単位課金）。M_AZ = 1（Single-AZ）／2（Multi-AZ）。リーダーノードは課金対象外</td></tr><tr><td>C_compute（リザーブド）</td><td>(Upfront ÷ 期間月数) ＋ 月額料金 × N_RI ＋ 予約を超えるノードのオンデマンド分</td><td>RI は稼働有無にかかわらず期間中全時間課金</td></tr><tr><td>C_RMS（RG/RA3）</td><td>S_RMS_GBmonth × P_RMS</td><td>S_RMS_GBmonth = Σ(GB × h) ÷ H_month。DC2 は 0（ノード料金に含む）</td></tr><tr><td>C_CS</td><td>max(0, T_CS_sec − T_credit_sec) × (N_nodes × P_node_hour ÷ 3600)</td><td>T_CS_sec = 全一時クラスターの稼働秒の合計（起動ごと最低 60 秒）。T_credit_sec = min(稼働 24h ごとに 3,600 秒の累積, 30h = 108,000 秒)</td></tr><tr><td>C_spectrum（RA3/DC2）</td><td>Σ_query max(10 MB, ceil_MB(scan_bytes)) を TB 換算 × P_spectrum_TB ＋ S3/Glue/KMS 料金</td><td>RG では Spectrum 不要。DDL・失敗クエリは無料</td></tr><tr><td>C_backup</td><td>4.3 の式</td><td></td></tr><tr><td>C_transfer</td><td>Σ（転送量 GB × 該当の AWS 標準転送単価）</td><td>同一リージョン内 S3 とのロード/アンロード/バックアップは無料</td></tr><tr><td>C_other</td><td>Redshift ML、Zero-ETL 関連、CloudWatch 等</td><td>該当時のみ</td></tr></table></div>
+<aside class="easy" id="easy-rs-total-prov" aria-label="やさしい説明">
+<p class="easy-kicker">やさしい説明</p>
+<p class="easy-title">月額は、使った分の料金をただ足す</p>
+<p>プロビジョンド型の月額は、計算処理、データの保管、自動増強、外のデータの検索、バックアップ、転送、その他を足したものです。使っていない項目は0円です。</p>
+<p>計算処理は「台数 × 1時間の値段 × 動いていた時間」です。止めている時間は入れません。リーダー役のノードは請求に入りません。働くノードの分だけです。2つの場所に同じだけ置く（Multi-AZ）ときは、計算処理を2倍します。同じ店を2軒出すようなものです。</p>
+<p>1年や3年のまとめ契約は、電車の定期券に近いです。途中で止めている時間があっても、契約の期間は払い続けます。</p>
+<p>自動増強は回数券です。本体が24時間動くごとに、1時間分の無料券が1枚もらえます。30時間分まで貯まります。使った時間が無料券より長ければ、超えた時間だけ有料です。1回の起動は、10秒で終わっても最低1分として数えます。</p>
+<p>外のデータの検索は、読んだ量で払います。1.2MBのように端数があれば、次の1MBに上げます。10MBより小さい検索でも10MB分です。</p>
+<div class="ex">
+<p><span class="ex-label">説明用のかんたんな数字</span></p>
+<ol>
+<li>ノード2台 × 1時間100円 × 720時間。まず 2 × 100 ＝ 200。次に 200 × 720 ＝ 144,000円。</li>
+<li>2つの場所に置くなら、計算処理は 144,000 × 2 ＝ 288,000円。</li>
+<li>データ保管は 100GB × 10円 ＝ 1,000円。DC2型はノード料金に入っているので、ここは0円です。</li>
+<li>バックアップを2,000円、転送を 10GB × 5円 ＝ 50円、追加機能を0円とします。</li>
+<li>1つの場所だけの合計は 144,000 ＋ 1,000 ＋ 2,000 ＋ 50 ＋ 0 ＝ 147,050円。</li>
+</ol>
+<p>自動増強の例：無料券が1時間、実際は3時間。有料は 3 − 1 ＝ 2時間。2台 × 100円 × 2時間 ＝ 400円です。</p>
+<p>検索の例：1.2MBの検索は2MBに上げます。3回なら 2 ＋ 2 ＋ 2 ＝ 6MBです。</p>
+<p class="ex-note">100円、10円、5円、2,000円は説明用です。本当の料金表の金額ではありません。</p>
+</div>
+</aside>
+
 <h3 id="s78">5.2 Redshift Serverless（月額）</h3>
 <p class="formula">C_total = C_RPU + C_RMS + C_backup + C_transfer + C_other</p>
 <div class="table-wrap"><table><tr><th><strong>項目</strong></th><th><strong>計算式</strong></th><th><strong>備考</strong></th></tr><tr><td>C_RPU（実績ベース）</td><td>Σ charged_seconds ÷ 3600 × P_RPU_hour</td><td>SYS_SERVERLESS_USAGE.charged_seconds を使用（公式推奨）。保持期間は 7 日のため月次集計は定期的に退避が必要</td></tr><tr><td>C_RPU（見積ベース）</td><td>Σ_job (RPU_job × max(60, 実行秒)) ÷ 3600 × P_RPU_hour</td><td>RPU_job は最低ベース容量。スケール時は増加分も同単価。アイドル時間は 0</td></tr><tr><td>C_RPU（Reservations 併用）</td><td>R_RPU × H_month × P_res_hour ＋ 超過分 × P_RPU_hour</td><td>予約分は 24 時間 365 日課金</td></tr><tr><td>C_RMS</td><td>S_RMS_GBmonth × P_RMS</td><td>data_storage（MB、1 分粒度）等から算出</td></tr><tr><td>C_backup</td><td>4.3 の式（ユニークブロック方式）</td><td>24 時間未満のリカバリーポイントは 0</td></tr><tr><td>C_transfer</td><td>クロスリージョンのスナップショットレプリケーション・データ共有、その他の転送</td><td>料金ページの転送単価</td></tr><tr><td>C_other</td><td>Redshift ML 等</td><td>Concurrency Scaling / Spectrum の別料金はなし</td></tr></table></div>
+<aside class="easy" id="easy-rs-total-sls" aria-label="やさしい説明">
+<p class="easy-kicker">やさしい説明</p>
+<p class="easy-title">Serverlessは、使った処理の量 × 時間 × 単価</p>
+<p>何もしていない時間は0円です。動いた処理は「処理能力 × 時間 × 1時間あたりの単価」です。1回の仕事が10秒で終わっても、最低60秒分を数えます。電話の最低料金に近い考え方です。60秒は1時間の60分の1です。</p>
+<p>予約は定期券です。予約した分は、使わなくてもその月の全部の時間を払います。予約より多く使った分だけ、通常の単価を足します。</p>
+<p>データの保管とバックアップは、上と同じかけ算です。24時間以内の自動の復旧ポイントは0円です。自動増強と外のデータの検索は、この処理料金に含まれ、別の料金はありません。</p>
+<div class="ex">
+<p><span class="ex-label">説明用のかんたんな数字</span></p>
+<ol>
+<li>処理能力4 × 3時間 × 50円。4 × 3 ＝ 12。12 × 50円 ＝ 600円。</li>
+<li>10秒で終わった仕事も60秒分です。4 ×（1 ÷ 60）× 50円 ＝ 200 ÷ 60 ＝ 3と1/3円（約3.33円）。</li>
+<li>予約が4で、1時間40円、月720時間なら 4 × 720 × 40円。4 × 720 ＝ 2,880。2,880 × 40 ＝ 115,200円。使わなくてもこの金額です。</li>
+<li>予約を超えた分が、処理能力2 × 10時間 × 50円なら 2 × 10 × 50 ＝ 1,000円。</li>
+<li>この予約の月は 115,200 ＋ 1,000 ＝ 116,200円。保管やバックアップがあれば、さらに足します。</li>
+</ol>
+<p class="ex-note">50円と40円は説明用です。本当の料金表の金額ではありません。</p>
+</div>
+</aside>
+
 <p>コスト上限管理: Max RPU-hours（日/週/月）と MaxRPU を設定すると、上記 C_RPU の上限を「Max RPU-hours × P_RPU_hour」で見積もれる。</p>
 <h3 id="s82">5.3 入力値チェックリスト（どこで取得するか）</h3>
 <div class="table-wrap"><table><tr><th><strong>入力値</strong></th><th><strong>取得元</strong></th></tr><tr><td>リージョン別単価（P_node_hour、P_RMS、P_RPU_hour、P_snap、P_spectrum_TB、P_xfer、RI 料金、Reservations 料金）</td><td>公式料金ページ <a href="https://aws.amazon.com/redshift/pricing/" target="_blank" rel="noopener">https://aws.amazon.com/redshift/pricing/</a> （リージョン選択）、AWS Pricing Calculator</td></tr><tr><td>ノードタイプ、ノード数、Multi-AZ 有無</td><td>Redshift コンソール（クラスター詳細）／ノード仕様は Management Guide「Node type details」</td></tr><tr><td>稼働時間・一時停止時間</td><td>運用スケジュール、コンソールのイベント履歴（Pause/Resume スケジュール）</td></tr><tr><td>RMS 使用量</td><td>CloudWatch（RA3/RG のマネージドストレージ関連メトリクス）、コンソール、Serverless は SYS_SERVERLESS_USAGE.data_storage</td></tr><tr><td>スナップショット使用量</td><td>aws redshift describe-storage（TotalBackupSizeInMegaBytes）、コンソール、CloudWatch RgUniqueSnapshotStorage（RG）／ServerlessUniqueSnapshotStorage（Serverless）</td></tr><tr><td>スナップショット保持期間・世代数</td><td>クラスターの自動スナップショット保持期間設定、手動スナップショットの保持期間、スナップショットスケジュール</td></tr><tr><td>変更率 r_change</td><td>スナップショット作成中に表示される増分スナップショットサイズ（コンソール / describe-cluster-snapshots）</td></tr><tr><td>Concurrency Scaling 使用秒</td><td>CloudWatch ConcurrencyScalingSeconds、ConcurrencyScalingActiveClusters、システムビュー SVCS_CONCURRENCY_SCALING_USAGE（usage_in_seconds）、使用量上限は UsageLimitConsumed</td></tr><tr><td>Spectrum スキャン量</td><td>システムビュー SVL_S3QUERY_SUMMARY（s3_scanned_bytes）／SYS_EXTERNAL_QUERY_DETAIL、使用量上限は CloudWatch UsageLimitConsumed（FeatureType=SPECTRUM）</td></tr><tr><td>Serverless RPU 使用量</td><td>SYS_SERVERLESS_USAGE（charged_seconds、compute_capacity）、CloudWatch ComputeCapacity（AWS/Redshift-Serverless）</td></tr><tr><td>クロスリージョン転送量</td><td>増分スナップショットサイズの合計、SYS_SERVERLESS_USAGE.cross_region_transferred_data（データ共有分）</td></tr><tr><td>実請求額での検証</td><td>AWS 請求コンソール（Serverless 無料トライアル中は請求コンソールに表示されない点に注意）</td></tr></table></div>
