@@ -5,18 +5,6 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>AWS Backup 処理単位とコスト算出手順（技術者向け）</title>
 <link rel="stylesheet" href="../style.css">
-<style>
-.awsb svg,.awsb svg *{box-sizing:content-box}
-.awsb svg text,.awsb svg tspan{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Hiragino Sans","Noto Sans JP","WenQuanYi Micro Hei","Droid Sans Fallback",Arial,sans-serif}
-.awsb .diagram{margin:1.2rem 0}
-.awsb .diagram svg{display:block;width:100%;height:auto;background:#fff;border:1px solid #d0d7de;border-radius:10px}
-.awsb .only-phone{display:none}
-.awsb a,.awsb .formula{overflow-wrap:anywhere}
-.awsb .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
-.awsb table.wide{min-width:760px}
-.awsb table.sheet{min-width:980px}
-@media(max-width:700px){.awsb .only-desk{display:none}.awsb .only-phone{display:block}}
-</style>
 </head>
 <body>
 <header>
@@ -29,112 +17,79 @@
 </header>
 <main>
 <article class="awsb">
-<p>経営層向けの説明は別紙を参照： <a href="executive/">経営層向け説明版</a></p>
-<h2 id="s0">根拠と単価の扱い</h2>
-<ul>
-<li>仕様の根拠は AWS Backup Developer Guide、Amazon Redshift／DynamoDB の公式ドキュメント、AWS Backup 料金ページです。</li>
-<li>単価は AWS 公式価格表（Price List API）から2026年10月8日に取得しました。AWSBackup は publicationDate 2026-09-28T17:01:20Z、AmazonRedshift と AmazonDynamoDB は 2026-09-11 版です。すべて米ドル・税抜で、変更される可能性があります。</li>
-<li>AWS Pricing Calculator の入力項目と計算過程（Show calculations）は2026年10月8日にブラウザで確認した内容です（英語表示、未サインイン）。</li>
-<li>本書の章立ては「ステップ0 入力値の収集 → ステップ1〜7 計算ツール入力 → ステップ8 手計算 → ステップ9 照合」の作業順と一致しています。</li>
-</ul>
+<style>
+.awsb{font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo','Noto Sans CJK JP',sans-serif;line-height:1.75;color:#1a1a1a;max-width:960px;margin:0 auto;padding:0 12px;word-break:normal;overflow-wrap:anywhere}
+.awsb h1{font-size:1.6em;line-height:1.4;margin:.6em 0 .4em}
+.awsb h2{font-size:1.3em;border-bottom:2px solid #1f4e79;padding-bottom:.2em;margin:1.8em 0 .6em}
+.awsb h3{font-size:1.08em;margin:1.4em 0 .4em;color:#1f4e79}
+.awsb .meta{color:#555;font-size:.88em}
+.awsb .key{color:#c00000;font-weight:700}
+.awsb .kari{color:#c00000;font-weight:700;border:2px solid #c00000;padding:.4em .7em;border-radius:6px;display:block}
+.awsb .note{background:#f5f7fa;border-left:4px solid #1f4e79;padding:.6em .9em;margin:1em 0;font-size:.95em}
+.awsb .warn{background:#fff4f4;border-left:4px solid #c00000;padding:.6em .9em;margin:1em 0;font-size:.95em}
+.awsb .tbl{overflow-x:auto;margin:.8em 0 1.2em}
+.awsb table{border-collapse:collapse;width:100%;font-size:.92em}
+.awsb th,.awsb td{border:1px solid #c9d1dc;padding:.45em .6em;vertical-align:top;text-align:left}
+.awsb th{background:#e8eef7}
+.awsb tr.total td{background:#fff2cc;font-weight:700}
+.awsb td.num{text-align:right;white-space:nowrap}
+.awsb code{font-family:Consolas,Menlo,monospace;font-size:.9em;background:#f0f2f5;padding:0 .25em;border-radius:3px}
+.awsb pre{background:#f0f2f5;padding:.7em;overflow-x:auto;font-size:.88em;line-height:1.5}
+.awsb figure{margin:1.4em 0;text-align:center}
+.awsb figure svg{width:100%;height:auto;max-width:760px}
+.awsb figcaption{font-size:.9em;color:#333;margin-top:.4em;font-weight:700}
+.awsb .flow{display:flex;flex-wrap:nowrap;align-items:stretch;justify-content:center;gap:8px;text-align:left}
+.awsb .fbox{flex:1 1 0;min-width:0;border-radius:10px;padding:.6em .7em;border:1.5px solid #555;font-size:.9em;line-height:1.5}
+.awsb .fbox b{display:block;font-size:1.02em;margin-bottom:.2em}
+.awsb .arrow{align-self:center;font-size:1.4em;color:#555;flex:0 0 auto}
+.awsb .sum{background:#1f4e79;color:#fff;border-color:#1f4e79;text-align:center}
+.awsb .c1{background:#cfe2ff}.awsb .c2{background:#d1f2d9}.awsb .c3{background:#ffe8b3}.awsb .c4{background:#f8d7da}.awsb .c5{background:#e2d9f3}
+.awsb .steps{counter-reset:s;list-style:none;padding:0}
+.awsb ol,.awsb ul{padding-left:1.4em}
+@media (max-width:600px){.awsb .flow{flex-wrap:wrap}.awsb{font-size:15px}.awsb .arrow{transform:rotate(90deg);flex-basis:100%;text-align:center}.awsb .fbox{max-width:none;flex-basis:100%}}
 
-<h2 id="s1">1. AWS Backup の処理単位</h2>
-<figure class="diagram">
-<svg class="only-desk" viewBox="0 0 980 400" role="img" aria-labelledby="tfig1d-title">
-<title id="tfig1d-title">図1 AWS Backup の処理単位と課金ポイント</title>
-<defs>
-<marker id="arr-t1d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#59636e"/></marker>
-</defs>
-<text x="20" y="28" font-size="13" fill="#59636e">処理の流れ（上）と、料金が付く地点（下）</text>
-<rect x="16" y="44" width="200" height="96" rx="12" fill="#f6f8fa" stroke="#d0d7de"/>
-<text x="116" y="80" text-anchor="middle" font-size="15" font-weight="700" fill="#232f3e">バックアッププラン</text>
-<text x="116" y="104" text-anchor="middle" font-size="13" fill="#1f2328">頻度・保存・コピー先</text>
-<text x="116" y="124" text-anchor="middle" font-size="13" fill="#59636e">プラン自体は無料</text>
-<line x1="224" y1="92" x2="268" y2="92" stroke="#59636e" stroke-width="2" marker-end="url(#arr-t1d)"/>
-<rect x="276" y="44" width="200" height="96" rx="12" fill="#f6f8fa" stroke="#d0d7de"/>
-<text x="376" y="80" text-anchor="middle" font-size="15" font-weight="700" fill="#232f3e">バックアップジョブ</text>
-<text x="376" y="104" text-anchor="middle" font-size="13" fill="#1f2328">1リソースを1回取得</text>
-<text x="376" y="124" text-anchor="middle" font-size="13" fill="#59636e">ジョブ単位の料金なし</text>
-<line x1="484" y1="92" x2="528" y2="92" stroke="#59636e" stroke-width="2" marker-end="url(#arr-t1d)"/>
-<rect x="536" y="44" width="220" height="96" rx="12" fill="#fff8e6" stroke="#ff9900" stroke-width="2"/>
-<text x="646" y="80" text-anchor="middle" font-size="15" font-weight="700" fill="#232f3e">リカバリーポイント</text>
-<text x="646" y="104" text-anchor="middle" font-size="13" fill="#1f2328">＝バックアップそのもの</text>
-<text x="646" y="124" text-anchor="middle" font-size="13" font-weight="700" fill="#232f3e">保管は GB-月</text>
-<line x1="764" y1="92" x2="808" y2="92" stroke="#59636e" stroke-width="2" marker-end="url(#arr-t1d)"/>
-<rect x="816" y="44" width="148" height="96" rx="12" fill="#fff" stroke="#d0d7de"/>
-<text x="890" y="84" text-anchor="middle" font-size="15" font-weight="700" fill="#232f3e">ボールト</text>
-<text x="890" y="108" text-anchor="middle" font-size="13" fill="#1f2328">保管する容器</text>
-<text x="890" y="128" text-anchor="middle" font-size="12" fill="#59636e">論理エアギャップは割増</text>
-<rect x="16" y="188" width="300" height="132" rx="12" fill="#fff" stroke="#0969da"/>
-<text x="166" y="218" text-anchor="middle" font-size="15" font-weight="700" fill="#0969da">コピージョブ</text>
-<text x="166" y="246" text-anchor="middle" font-size="14" fill="#1f2328">別リージョン・別アカウント</text>
-<text x="166" y="270" text-anchor="middle" font-size="14" fill="#1f2328">転送は送信側／保管は受信側</text>
-<text x="166" y="294" text-anchor="middle" font-size="13" fill="#59636e">失敗したコピーは課金なし</text>
-<rect x="340" y="188" width="300" height="132" rx="12" fill="#fff" stroke="#232f3e"/>
-<text x="490" y="218" text-anchor="middle" font-size="15" font-weight="700" fill="#232f3e">復元ジョブ</text>
-<text x="490" y="246" text-anchor="middle" font-size="14" fill="#1f2328">新しいリソースを作る</text>
-<text x="490" y="270" text-anchor="middle" font-size="14" fill="#1f2328">復元した GB × 単価</text>
-<text x="490" y="294" text-anchor="middle" font-size="13" fill="#59636e">ウォームとコールドで単価が違う</text>
-<rect x="664" y="188" width="300" height="132" rx="12" fill="#fff" stroke="#6e7781"/>
-<text x="814" y="218" text-anchor="middle" font-size="15" font-weight="700" fill="#232f3e">復元テスト</text>
-<text x="814" y="246" text-anchor="middle" font-size="14" fill="#1f2328">1件ごとの定額</text>
-<text x="814" y="270" text-anchor="middle" font-size="14" fill="#1f2328">＋ 復元した GB の料金</text>
-<text x="814" y="294" text-anchor="middle" font-size="13" fill="#59636e">検証後は自動削除</text>
-<text x="490" y="356" text-anchor="middle" font-size="14" font-weight="700" fill="#232f3e">DynamoDB（高度な機能）は毎回フルサイズ。増分ではない。</text>
-<text x="490" y="380" text-anchor="middle" font-size="13" fill="#59636e">増分に対応するリソースは、2回目以降は変わった分だけ保管量が増える。</text>
-</svg>
-<svg class="only-phone" viewBox="0 0 360 980" role="img" aria-labelledby="tfig1p-title">
-<title id="tfig1p-title">図1 AWS Backup の処理単位と課金ポイント</title>
-<defs>
-<marker id="arr-t1p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#59636e"/></marker>
-</defs>
-<text x="16" y="24" font-size="13" fill="#59636e">処理の流れ</text>
-<rect x="24" y="36" width="312" height="84" rx="12" fill="#f6f8fa" stroke="#d0d7de"/>
-<text x="180" y="68" text-anchor="middle" font-size="16" font-weight="700" fill="#232f3e">バックアッププラン</text>
-<text x="180" y="94" text-anchor="middle" font-size="14" fill="#59636e">プラン自体は無料</text>
-<line x1="180" y1="124" x2="180" y2="148" stroke="#59636e" stroke-width="2" marker-end="url(#arr-t1p)"/>
-<rect x="24" y="156" width="312" height="84" rx="12" fill="#f6f8fa" stroke="#d0d7de"/>
-<text x="180" y="188" text-anchor="middle" font-size="16" font-weight="700" fill="#232f3e">バックアップジョブ</text>
-<text x="180" y="214" text-anchor="middle" font-size="14" fill="#59636e">ジョブ単位の料金なし</text>
-<line x1="180" y1="244" x2="180" y2="268" stroke="#59636e" stroke-width="2" marker-end="url(#arr-t1p)"/>
-<rect x="24" y="276" width="312" height="96" rx="12" fill="#fff8e6" stroke="#ff9900" stroke-width="2"/>
-<text x="180" y="308" text-anchor="middle" font-size="16" font-weight="700" fill="#232f3e">リカバリーポイント</text>
-<text x="180" y="334" text-anchor="middle" font-size="14" fill="#1f2328">保管料金は GB-月</text>
-<text x="180" y="356" text-anchor="middle" font-size="13" fill="#59636e">ウォーム／コールド別</text>
-<line x1="180" y1="376" x2="180" y2="400" stroke="#59636e" stroke-width="2" marker-end="url(#arr-t1p)"/>
-<rect x="24" y="408" width="312" height="72" rx="12" fill="#fff" stroke="#d0d7de"/>
-<text x="180" y="440" text-anchor="middle" font-size="16" font-weight="700" fill="#232f3e">ボールト</text>
-<text x="180" y="464" text-anchor="middle" font-size="14" fill="#59636e">論理エアギャップは割増</text>
-<text x="16" y="512" font-size="13" fill="#59636e">料金が付く地点</text>
-<rect x="16" y="524" width="328" height="100" rx="12" fill="#fff" stroke="#0969da"/>
-<text x="180" y="554" text-anchor="middle" font-size="16" font-weight="700" fill="#0969da">コピージョブ</text>
-<text x="180" y="580" text-anchor="middle" font-size="14" fill="#1f2328">転送は送信側、保管は受信側</text>
-<text x="180" y="604" text-anchor="middle" font-size="13" fill="#59636e">失敗したコピーは課金なし</text>
-<rect x="16" y="640" width="328" height="88" rx="12" fill="#fff" stroke="#232f3e"/>
-<text x="180" y="672" text-anchor="middle" font-size="16" font-weight="700" fill="#232f3e">復元ジョブ</text>
-<text x="180" y="698" text-anchor="middle" font-size="14" fill="#1f2328">復元した GB × 単価</text>
-<rect x="16" y="744" width="328" height="88" rx="12" fill="#fff" stroke="#6e7781"/>
-<text x="180" y="776" text-anchor="middle" font-size="16" font-weight="700" fill="#232f3e">復元テスト</text>
-<text x="180" y="802" text-anchor="middle" font-size="14" fill="#1f2328">1件の定額 ＋ 復元 GB</text>
-<text x="180" y="868" text-anchor="middle" font-size="14" font-weight="700" fill="#232f3e">DynamoDB は毎回フルサイズ</text>
-<text x="180" y="894" text-anchor="middle" font-size="13" fill="#59636e">増分対応のリソースは</text>
-<text x="180" y="916" text-anchor="middle" font-size="13" fill="#59636e">2回目以降、差分だけ増える</text>
-</svg>
-<figcaption>図1 AWS Backup の処理単位と課金ポイント</figcaption>
-</figure>
-<div class="table-wrap"><table class="wide">
+.awsb .sv-n{display:none}
+@media (max-width:600px){.awsb .tbl table{min-width:540px}}
+@media (max-width:600px){.awsb .sv-w{display:none}.awsb .sv-n{display:inline}.awsb figure svg.sv-n{max-width:420px}}
+</style>
+
+<h1>AWS Backup 処理単位とコスト算出手順（技術者向け）</h1>
+<p class="meta">作成日：2026年10月8日（JST）／対象：AWS Backup で保護する Amazon DynamoDB と Amazon Redshift（その他のリソースは概要のみ）／リージョン：アジアパシフィック（東京）ap-northeast-1<br>
+経営層向けの説明版：<a href="executive/">経営層向け説明版を開く</a></p>
+<div class="note">
+<strong>根拠と単価の扱い</strong><br>
+・仕様の根拠は AWS Backup Developer Guide、Amazon Redshift／DynamoDB の公式ドキュメント、AWS Backup 料金ページです。<br>
+・単価は AWS 公式価格表（Price List API）から2026年10月8日に取得しました。AWSBackup は publicationDate 2026-09-28T17:01:20Z、AmazonRedshift と AmazonDynamoDB は 2026-09-11 版です。すべて米ドル・税抜で、変更される可能性があります。<br>
+・AWS Pricing Calculator の入力項目と計算過程（Show calculations）は2026年10月8日にブラウザで確認した内容です（英語表示、未サインイン）。<br>
+・本書の章立ては「ステップ0 入力値の収集 → ステップ1〜7 計算ツール入力 → ステップ8 手計算 → ステップ9 照合」の作業順と一致しています。
+</div>
+
+<h2>1. AWS Backup の処理単位</h2>
+<figure data-fig="units"><div class="flow">
+<div class="fbox c5"><b>バックアッププラン／ルール</b>頻度・時間帯・保存期間（ライフサイクル）・保管先ボールト・コピー先を定義。<br><i>課金なし</i></div>
+<div class="arrow">→</div>
+<div class="fbox c1"><b>バックアップジョブ</b>1回のバックアップ処理（1リソース×1回）。状態：CREATED／RUNNING／COMPLETED 等。<br><i>ジョブ自体の課金なし</i></div>
+<div class="arrow">→</div>
+<div class="fbox c3"><b>リカバリーポイント</b>＝バックアップ1件。ボールトに保存。<br><i>課金単位：GB-月（ウォーム／コールド別）</i></div>
+<div class="arrow">→</div>
+<div class="fbox c2"><b>コピージョブ</b>別ボールト（他リージョン・他アカウント）へ複製。<br><i>課金：転送GB＋コピー先のGB-月</i></div>
+<div class="arrow">→</div>
+<div class="fbox c4"><b>復元ジョブ／復元テスト</b>リカバリーポイントから新しいリソースを作成。<br><i>課金：復元GB（テストは＋1件ごとの定額）</i></div>
+</div><figcaption>図1　AWS Backup の処理単位と課金ポイント</figcaption></figure>
+<div class="tbl"><table>
 <tr><th>用語</th><th>意味（公式ドキュメントの定義に基づく）</th><th>課金との関係</th></tr>
-<tr><td>バックアッププラン／バックアップルール</td><td>バックアップの頻度、時間帯（開始・完了ウィンドウ）、ライフサイクル（コールドへの移行日数 MoveToColdStorageAfterDays、削除日数 DeleteAfterDays）、保管先ボールト、コピー先（コピーアクション）を定義する</td><td>プラン自体は無料。ルールの頻度と保存期間が保管量を決める</td></tr>
+<tr><td>バックアッププラン／バックアップルール</td><td>バックアップの頻度、時間帯（開始・完了ウィンドウ）、ライフサイクル（コールドへの移行日数 <code>MoveToColdStorageAfterDays</code>、削除日数 <code>DeleteAfterDays</code>）、保管先ボールト、コピー先（コピーアクション）を定義する</td><td>プラン自体は無料。ルールの頻度と保存期間が保管量を決める</td></tr>
 <tr><td>リソース割り当て</td><td>プランの対象にするリソース（タグや ARN で指定）</td><td>対象リソースの数とサイズが保管量を決める</td></tr>
 <tr><td>バックアップジョブ</td><td>1つのリソースを1回バックアップする処理。プランによる自動実行でもオンデマンドでも作成され、一意の ID を持つ。状態は CREATED、PENDING、RUNNING、ABORTING、ABORTED、COMPLETED、FAILED、EXPIRED、PARTIAL</td><td>ジョブ単位の料金はない。完了するとリカバリーポイントが作られ、保管料金の対象になる</td></tr>
-<tr><td>リカバリーポイント（＝バックアップ）</td><td>ある時点のリソースの内容。バックアップボールトに保存される。「リカバリーポイント」と「バックアップ」は同じ意味で使われる</td><td>保管料金の単位。GB-月で、ストレージクラス（WARM／COLD）ごとに課金</td></tr>
+<tr><td>リカバリーポイント（＝バックアップ）</td><td>ある時点のリソースの内容。バックアップボールトに保存される。「リカバリーポイント」と「バックアップ」は同じ意味で使われる</td><td><strong>保管料金の単位</strong>。GB-月で、ストレージクラス（WARM／COLD）ごとに課金</td></tr>
 <tr><td>バックアップボールト</td><td>リカバリーポイントを入れる容器。KMS キーとアクセスポリシーを設定する。改ざん対策用に「論理エアギャップボールト」もある</td><td>論理エアギャップボールトは通常より単価が高い（DynamoDB は約1.15倍）</td></tr>
 <tr><td>コピージョブ</td><td>リカバリーポイントを別のボールト（別リージョン・別アカウント）へ複製する処理</td><td>コピー先にリカバリーポイントが作られた時点で課金。失敗した場合は課金なし。転送料金は送信側、保管料金は受信側のアカウントに請求</td></tr>
 <tr><td>復元ジョブ</td><td>リカバリーポイントから新しいリソース（テーブル、クラスターなど）を作る処理</td><td>復元した GB に課金（リソースの種類とストレージクラスで単価が違う）</td></tr>
 <tr><td>復元テスト</td><td>復元テストプランに従って定期的に自動で復元し、検証後に自動削除する機能</td><td>テストしたリカバリーポイント1件ごとの定額＋復元した GB の料金</td></tr>
 </table></div>
-<h3 id="s11">1.1 計量単位（何で数えられるか）</h3>
-<div class="table-wrap"><table class="wide">
+
+<h3>1.1 計量単位（何で数えられるか）</h3>
+<div class="tbl"><table>
 <tr><th>料金項目</th><th>計量単位</th><th>測り方（公式記載）</th></tr>
 <tr><td>保管（ウォーム／コールド）</td><td>GB-月</td><td>月を通した平均保管量。DynamoDB は時間単位（ByteHrs）で集計される。EFS、S3、VMware、SAP HANA、Timestream は GB-日単位で、その日は1日分課金される</td></tr>
 <tr><td>復元</td><td>GB</td><td>その月に行ったすべての復元のデータ量の合計</td></tr>
@@ -143,12 +98,12 @@
 <tr><td>復元テスト</td><td>件数＋GB</td><td>復元を実行したリカバリーポイント1件ごとの定額＋復元量（単価は通常の復元と同じ）</td></tr>
 <tr><td>Audit Manager</td><td>評価回数</td><td>リソース1つをコントロール1つで評価するごとに課金。別途 AWS Config の料金</td></tr>
 </table></div>
-<p>増分かフルか：AWS Backup は対応するリソースでは2回目以降を増分で保存します。対応しないリソースは毎回フルコピーで、その分保管料が増えます。DynamoDB（高度な機能）は「Full; no Incremental backups in any tier」と明記されており、ウォームでもコールドでも毎回フルサイズです。なお、増分バックアップでも各リカバリーポイントはフル復元に必要な参照データを保持します。</p>
+<div class="note"><strong>増分かフルか：</strong>AWS Backup は対応するリソースでは2回目以降を増分で保存します。対応しないリソースは毎回フルコピーで、その分保管料が増えます。<strong>DynamoDB（高度な機能）は「Full; no Incremental backups in any tier」と明記されており、ウォームでもコールドでも毎回フルサイズです。</strong>なお、増分バックアップでも各リカバリーポイントはフル復元に必要な参照データを保持します。</div>
 
-<h2 id="s2">2. リソース別の扱い（DynamoDB と Redshift）</h2>
-<div class="table-wrap"><table class="sheet">
+<h2>2. リソース別の扱い（DynamoDB と Redshift）</h2>
+<div class="tbl"><table>
 <tr><th>項目</th><th>DynamoDB（AWS Backup の高度な機能あり）</th><th>DynamoDB（高度な機能なし）</th><th>Redshift（プロビジョンド／Serverless）</th></tr>
-<tr><td>バックアップの実体</td><td>AWS Backup が管理するフルバックアップ（ARN は arn:aws:backup）</td><td>DynamoDB のオンデマンドバックアップ</td><td>Redshift の手動スナップショット（自動スナップショットは管理対象外）</td></tr>
+<tr><td>バックアップの実体</td><td>AWS Backup が管理するフルバックアップ（ARN は <code>arn:aws:backup</code>）</td><td>DynamoDB のオンデマンドバックアップ</td><td>Redshift の<strong>手動スナップショット</strong>（自動スナップショットは管理対象外）</td></tr>
 <tr><td>増分</td><td>なし（毎回フル）</td><td>なし（毎回フル）</td><td>AWS Backup の対応表には記載なし。Redshift 側のスナップショットは変更分のみ保存される</td></tr>
 <tr><td>コールド保管</td><td>可</td><td>不可</td><td>不可（料金計算ツールにも入力欄がない）</td></tr>
 <tr><td>リージョン間・アカウント間コピー</td><td>可</td><td>不可</td><td>AWS Backup の対応表に記載なし（Redshift 本体のリージョン間スナップショットコピーを使う）</td></tr>
@@ -156,81 +111,71 @@
 <tr><td>復元テスト</td><td>可</td><td>可</td><td>対応表に記載なし</td></tr>
 <tr><td>項目単位の復元</td><td>—</td><td>—</td><td>テーブル単位の復元が可能</td></tr>
 <tr><td>請求の表示先</td><td>「Backup」（保管・転送・復元・早期削除）</td><td>「DynamoDB」</td><td>保管は Redshift 側（完全管理の対象外のため）</td></tr>
-<tr><td>東京の保管単価</td><td>ウォーム 0.114／コールド 0.0342 USD/GB-月</td><td>0.114 USD/GB-月（APN1-TimedBackupStorage-ByteHrs）</td><td>0.025 USD/GB-月（最初の50TB）、0.024（次の450TB）、0.023（500TB超）（APN1-Redshift:PaidSnapshots）</td></tr>
-<tr><td>サイズ確認（BackupSizeInBytes）</td><td>取得できる（リカバリーポイントのサイズ）</td><td>DynamoDB の ListBackups 等</td><td>AWS Backup の BackupSizeInBytes は対象外（未設定）。Redshift の Snapshot API で確認</td></tr>
+<tr><td>東京の保管単価</td><td>ウォーム 0.114／コールド 0.0342 USD/GB-月</td><td>0.114 USD/GB-月（<code>APN1-TimedBackupStorage-ByteHrs</code>）</td><td>0.025 USD/GB-月（最初の50TB）、0.024（次の450TB）、0.023（500TB超）（<code>APN1-Redshift:PaidSnapshots</code>）</td></tr>
+<tr><td>サイズ確認（BackupSizeInBytes）</td><td>取得できる（リカバリーポイントのサイズ）</td><td>DynamoDB の ListBackups 等</td><td>AWS Backup の <code>BackupSizeInBytes</code> は対象外（未設定）。Redshift の Snapshot API で確認</td></tr>
 </table></div>
 <ul>
-<li>DynamoDB の高度な機能は、2021年11月21日以前にバックアップボールトを作っていないアカウントでは既定で有効です。aws backup describe-region-settings の ResourceTypeManagementPreference と ResourceTypeOptInPreference がどちらも "DynamoDB":true なら有効です。有効化してもウォーム保管の単価は変わりません。</li>
+<li>DynamoDB の高度な機能は、2021年11月21日以前にバックアップボールトを作っていないアカウントでは既定で有効です。<code>aws backup describe-region-settings</code> の <code>ResourceTypeManagementPreference</code> と <code>ResourceTypeOptInPreference</code> がどちらも <code>"DynamoDB":true</code> なら有効です。有効化してもウォーム保管の単価は変わりません。</li>
 <li>DynamoDB の PITR（本体の継続バックアップ、東京 0.228 USD/GB-月）は AWS Backup のスナップショットとは別物です。両方使えば両方課金されます。公式はこれを「意図的な相補的保護」と説明しています。</li>
-<li>Redshift のスナップショットは、2026年6月8日から Serverless と RG で「アクティブな手動スナップショット全体での一意のデータブロック」に課金されます。RA3 は従来の課金のままです（AWS Big Data Blog）。CloudWatch には ServerlessUniqueSnapshotStorage と RgUniqueSnapshotStorage のメトリクスがあります。</li>
+<li>Redshift のスナップショットは、2026年6月8日から Serverless と RG で「アクティブな手動スナップショット全体での一意のデータブロック」に課金されます。RA3 は従来の課金のままです（AWS Big Data Blog）。CloudWatch には <code>ServerlessUniqueSnapshotStorage</code> と <code>RgUniqueSnapshotStorage</code> のメトリクスがあります。</li>
 <li>その他（概要）：EBS（コールドは EBS Snapshots Archive。保管料は EBS 側）、EFS（増分。コールドは 0.012 USD/GB-月）、S3、RDS／Aurora（保管は各サービス側）、Timestream、VMware、SAP HANA など。</li>
 </ul>
 
-<h2 id="s3">3. ウォームとコールドの価格差と制約</h2>
-<h3 id="s31">3.1 東京リージョンの単価（AWS Backup 価格表）</h3>
-<div class="table-wrap"><table class="wide">
+<h2>3. ウォームとコールドの価格差と制約</h2>
+<h3>3.1 東京リージョンの単価（AWS Backup 価格表）</h3>
+<div class="tbl"><table>
 <tr><th>usagetype（東京）</th><th>内容</th><th>単価（USD）</th></tr>
-<tr><td>APN1-WarmStorage-ByteHrs-DynamoDB</td><td>ウォーム保管</td><td>0.114 /GB-月</td></tr>
-<tr><td>APN1-ColdStorage-ByteHrs-DynamoDB</td><td>コールド保管</td><td>0.0342 /GB-月</td></tr>
-<tr><td>APN1-EarlyDelete-ColdByteHrs-DynamoDB</td><td>コールドの早期削除</td><td>0.0342 /GB-月</td></tr>
-<tr><td>APN1-Restore-WarmBytes-DynamoDB</td><td>ウォームからの復元</td><td>0.171 /GB</td></tr>
-<tr><td>APN1-Restore-ColdBytes-DynamoDB</td><td>コールドからの復元</td><td>0.228 /GB</td></tr>
-<tr><td>APN1-WarmStorage-ByteHrs-DynamoDB-LAGV</td><td>論理エアギャップボールト（ウォーム）</td><td>0.1311 /GB-月</td></tr>
-<tr><td>APN1-ColdStorage-ByteHrs-DynamoDB-LAGV</td><td>論理エアギャップボールト（コールド）</td><td>0.0393 /GB-月</td></tr>
-<tr><td>APN1-CrossRegion-WarmBytes-DynamoDB<br>APN1-APN3-CrossRegion-WarmBytes-DynamoDB</td><td>東京からのリージョン間転送（大阪向けを含む多くの宛先）</td><td>0.11 /GB</td></tr>
-<tr><td>APN1-RT-RecoveryPoint-FixedFee</td><td>復元テスト（1リカバリーポイントごとの定額）</td><td>1.80 /件</td></tr>
-<tr><td>APN1-BackupEvaluations-Count</td><td>Audit Manager の評価</td><td>0.00125 /回</td></tr>
+<tr><td><code>APN1-WarmStorage-ByteHrs-DynamoDB</code></td><td>ウォーム保管</td><td class="num">0.114 /GB-月</td></tr>
+<tr><td><code>APN1-ColdStorage-ByteHrs-DynamoDB</code></td><td>コールド保管</td><td class="num">0.0342 /GB-月</td></tr>
+<tr><td><code>APN1-EarlyDelete-ColdByteHrs-DynamoDB</code></td><td>コールドの早期削除</td><td class="num">0.0342 /GB-月</td></tr>
+<tr><td><code>APN1-Restore-WarmBytes-DynamoDB</code></td><td>ウォームからの復元</td><td class="num">0.171 /GB</td></tr>
+<tr><td><code>APN1-Restore-ColdBytes-DynamoDB</code></td><td>コールドからの復元</td><td class="num">0.228 /GB</td></tr>
+<tr><td><code>APN1-WarmStorage-ByteHrs-DynamoDB-LAGV</code></td><td>論理エアギャップボールト（ウォーム）</td><td class="num">0.1311 /GB-月</td></tr>
+<tr><td><code>APN1-ColdStorage-ByteHrs-DynamoDB-LAGV</code></td><td>論理エアギャップボールト（コールド）</td><td class="num">0.0393 /GB-月</td></tr>
+<tr><td><code>APN1-CrossRegion-WarmBytes-DynamoDB</code><br><code>APN1-APN3-CrossRegion-WarmBytes-DynamoDB</code></td><td>東京からのリージョン間転送（大阪向けを含む多くの宛先）</td><td class="num">0.11 /GB</td></tr>
+<tr><td><code>APN1-RT-RecoveryPoint-FixedFee</code></td><td>復元テスト（1リカバリーポイントごとの定額）</td><td class="num">1.80 /件</td></tr>
+<tr><td><code>APN1-BackupEvaluations-Count</code></td><td>Audit Manager の評価</td><td class="num">0.00125 /回</td></tr>
 </table></div>
-<p>価格差はあります。DynamoDB の保管単価はコールドがウォームの30%（0.0342 ÷ 0.114 ＝ 0.30）です。一方、復元単価はコールドが約1.33倍（0.228 ÷ 0.171）です。参考までに、EFS と VMware はウォーム 0.06／コールド 0.012、SAP HANA はウォーム 0.072／コールド 0.012、Timestream は DynamoDB と同じ単価です（いずれも東京、USD/GB-月）。</p>
-<h3 id="s32">3.2 コールド保管の制約</h3>
-<figure class="diagram">
-<svg class="only-desk" viewBox="0 0 980 230" role="img" aria-labelledby="tfig2d-title">
-<title id="tfig2d-title">図2 ウォーム保管とコールド保管（AWS Backup のライフサイクル）</title>
-<defs>
-<marker id="arr-t2d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#59636e"/></marker>
-</defs>
-<rect x="16" y="36" width="200" height="120" rx="12" fill="#fff8e6" stroke="#ff9900" stroke-width="2"/>
-<text x="116" y="78" text-anchor="middle" font-size="16" font-weight="700" fill="#232f3e">ウォーム</text>
-<text x="116" y="104" text-anchor="middle" font-size="13" fill="#1f2328">作成直後は必ずここ</text>
-<text x="116" y="128" text-anchor="middle" font-size="13" fill="#59636e">推奨：8日以上置く</text>
-<text x="268" y="28" text-anchor="middle" font-size="12" fill="#59636e">MoveToColdStorageAfterDays</text>
-<line x1="224" y1="96" x2="308" y2="96" stroke="#59636e" stroke-width="2" marker-end="url(#arr-t2d)"/>
-<rect x="316" y="36" width="250" height="120" rx="12" fill="#e7f1fb" stroke="#0969da" stroke-width="2"/>
-<text x="441" y="74" text-anchor="middle" font-size="16" font-weight="700" fill="#232f3e">コールド</text>
-<text x="441" y="100" text-anchor="middle" font-size="13" fill="#1f2328">最低90日（早期削除は日割り）</text>
-<text x="441" y="124" text-anchor="middle" font-size="13" fill="#1f2328">コピー不可・移行日数は固定</text>
-<text x="616" y="28" text-anchor="middle" font-size="12" fill="#59636e">DeleteAfterDays</text>
-<line x1="574" y1="96" x2="656" y2="96" stroke="#59636e" stroke-width="2" marker-end="url(#arr-t2d)"/>
-<rect x="664" y="36" width="200" height="120" rx="12" fill="#f6f8fa" stroke="#d0d7de"/>
-<text x="764" y="86" text-anchor="middle" font-size="16" font-weight="700" fill="#232f3e">削除</text>
-<text x="764" y="112" text-anchor="middle" font-size="13" fill="#59636e">DeleteAfter ≥ 移行＋90</text>
-<text x="490" y="196" text-anchor="middle" font-size="13" fill="#59636e">Redshift にコールドの入力欄はない。対応は DynamoDB（高度な機能）など一部のリソースだけ。</text>
-</svg>
-<svg class="only-phone" viewBox="0 0 360 460" role="img" aria-labelledby="tfig2p-title">
-<title id="tfig2p-title">図2 ウォーム保管とコールド保管（AWS Backup のライフサイクル）</title>
-<defs>
-<marker id="arr-t2p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#59636e"/></marker>
-</defs>
-<rect x="24" y="12" width="312" height="96" rx="12" fill="#fff8e6" stroke="#ff9900" stroke-width="2"/>
-<text x="180" y="48" text-anchor="middle" font-size="16" font-weight="700" fill="#232f3e">ウォーム</text>
-<text x="180" y="74" text-anchor="middle" font-size="14" fill="#1f2328">作成直後は必ずここ</text>
-<text x="180" y="96" text-anchor="middle" font-size="13" fill="#59636e">推奨：8日以上置く</text>
-<text x="180" y="132" text-anchor="middle" font-size="12" fill="#59636e">MoveToColdStorageAfterDays</text>
-<line x1="180" y1="140" x2="180" y2="164" stroke="#59636e" stroke-width="2" marker-end="url(#arr-t2p)"/>
-<rect x="24" y="172" width="312" height="112" rx="12" fill="#e7f1fb" stroke="#0969da" stroke-width="2"/>
-<text x="180" y="206" text-anchor="middle" font-size="16" font-weight="700" fill="#232f3e">コールド</text>
-<text x="180" y="232" text-anchor="middle" font-size="14" fill="#1f2328">最低90日。早い削除は日割り</text>
-<text x="180" y="256" text-anchor="middle" font-size="14" fill="#1f2328">コピー不可・移行日数は固定</text>
-<text x="180" y="308" text-anchor="middle" font-size="12" fill="#59636e">DeleteAfterDays（移行＋90以上）</text>
-<line x1="180" y1="316" x2="180" y2="340" stroke="#59636e" stroke-width="2" marker-end="url(#arr-t2p)"/>
-<rect x="24" y="348" width="312" height="72" rx="12" fill="#f6f8fa" stroke="#d0d7de"/>
-<text x="180" y="390" text-anchor="middle" font-size="16" font-weight="700" fill="#232f3e">削除</text>
-<text x="180" y="440" text-anchor="middle" font-size="13" fill="#59636e">Redshift にコールド欄はない</text>
-</svg>
-<figcaption>図2 ウォーム保管とコールド保管（AWS Backup のライフサイクル）</figcaption>
-</figure>
+<p><strong>答え：価格差はあります。</strong>DynamoDB の保管単価はコールドがウォームの30%（0.0342 ÷ 0.114 ＝ 0.30）です。一方、復元単価はコールドが約1.33倍（0.228 ÷ 0.171）です。参考までに、EFS と VMware はウォーム 0.06／コールド 0.012、SAP HANA はウォーム 0.072／コールド 0.012、Timestream は DynamoDB と同じ単価です（いずれも東京、USD/GB-月）。</p>
+<h3>3.2 コールド保管の制約</h3>
+<figure data-fig="lifecycle"><svg class="sv-w" viewBox="0 0 680 300" role="img" aria-label="ウォームからコールドへの移行と削除のタイムライン" style="font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo','Noto Sans CJK JP',sans-serif" xmlns="http://www.w3.org/2000/svg">
+<rect x="0" y="0" width="680" height="300" fill="#fff"/>
+<text x="340" y="30" text-anchor="middle" font-size="20" font-weight="700" fill="#1a1a1a">バックアップ1件の一生（ライフサイクル）</text>
+<line x1="30" y1="150" x2="650" y2="150" stroke="#555" stroke-width="2"/>
+<polygon points="650,144 662,150 650,156" fill="#555"/>
+<rect x="30" y="95" width="200" height="55" rx="8" fill="#ffd9a8" stroke="#c55a11"/>
+<text x="130" y="120" text-anchor="middle" font-size="17" font-weight="700" fill="#7a3200">ウォーム保管</text>
+<text x="130" y="142" text-anchor="middle" font-size="14" fill="#7a3200">すぐ戻せる・単価は高め</text>
+<rect x="230" y="95" width="380" height="55" rx="8" fill="#cfe2ff" stroke="#1f4e79"/>
+<text x="420" y="120" text-anchor="middle" font-size="17" font-weight="700" fill="#1f4e79">コールド保管（最低90日）</text>
+<text x="420" y="142" text-anchor="middle" font-size="14" fill="#1f4e79">保管は安い・戻すときは割高</text>
+<line x1="30" y1="150" x2="30" y2="175" stroke="#555"/><text x="30" y="195" text-anchor="middle" font-size="14">作成</text>
+<line x1="230" y1="150" x2="230" y2="175" stroke="#555"/><text x="230" y="195" text-anchor="middle" font-size="14">移行日</text>
+<text x="230" y="214" text-anchor="middle" font-size="12.5" fill="#555">MoveToColdStorageAfterDays</text>
+<line x1="610" y1="150" x2="610" y2="175" stroke="#555"/><text x="610" y="195" text-anchor="middle" font-size="14">削除日</text>
+<text x="610" y="214" text-anchor="middle" font-size="12.5" fill="#555">DeleteAfterDays</text>
+<text x="420" y="248" text-anchor="middle" font-size="15" fill="#c00000" font-weight="700">削除日 ≧ 移行日 ＋ 90日（早く消すと残り日数分を請求）</text>
+<text x="340" y="280" text-anchor="middle" font-size="13.5" fill="#333">AWS推奨：ウォームは8日以上。移行後は「移行日」を変更できない</text>
+</svg><svg class="sv-n" viewBox="0 0 380 470" role="img" aria-label="ウォームからコールドへの移行と削除のタイムライン（縦）" style="font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo','Noto Sans CJK JP',sans-serif" xmlns="http://www.w3.org/2000/svg">
+<rect width="380" height="470" fill="#fff"/>
+<text x="190" y="28" text-anchor="middle" font-size="19" font-weight="700">バックアップ1件の一生</text>
+<line x1="40" y1="55" x2="40" y2="400" stroke="#555" stroke-width="2"/><polygon points="34,400 40,412 46,400" fill="#555"/>
+<circle cx="40" cy="60" r="6" fill="#555"/><text x="56" y="66" font-size="16" font-weight="700">作成</text>
+<rect x="56" y="80" width="300" height="70" rx="8" fill="#ffd9a8" stroke="#c55a11"/>
+<text x="206" y="110" text-anchor="middle" font-size="18" font-weight="700" fill="#7a3200">ウォーム保管</text>
+<text x="206" y="136" text-anchor="middle" font-size="15" fill="#7a3200">すぐ戻せる・単価は高め</text>
+<circle cx="40" cy="170" r="6" fill="#555"/><text x="56" y="176" font-size="16" font-weight="700">移行日</text>
+<text x="56" y="196" font-size="13" fill="#555">MoveToColdStorageAfterDays</text>
+<rect x="56" y="210" width="300" height="110" rx="8" fill="#cfe2ff" stroke="#1f4e79"/>
+<text x="206" y="245" text-anchor="middle" font-size="18" font-weight="700" fill="#1f4e79">コールド保管</text>
+<text x="206" y="272" text-anchor="middle" font-size="15" fill="#1f4e79">最低90日・保管は安い</text>
+<text x="206" y="296" text-anchor="middle" font-size="15" fill="#1f4e79">戻すときは割高</text>
+<circle cx="40" cy="345" r="6" fill="#555"/><text x="56" y="351" font-size="16" font-weight="700">削除日</text>
+<text x="56" y="371" font-size="13" fill="#555">DeleteAfterDays</text>
+<text x="190" y="436" text-anchor="middle" font-size="15" fill="#c00000" font-weight="700">削除日 ≧ 移行日 ＋ 90日</text>
+<text x="190" y="460" text-anchor="middle" font-size="13.5" fill="#333">推奨：ウォームは8日以上</text></svg><figcaption>図2　ウォーム保管とコールド保管（AWS Backup のライフサイクル）</figcaption></figure>
 <ul>
-<li><strong>最低90日：</strong>コールドに移したバックアップは、ウォームの期間に加えて最低90日保管する必要があります。DeleteAfterDays は MoveToColdStorageAfterDays ＋ 90 以上にしなければなりません。</li>
+<li><strong>最低90日：</strong>コールドに移したバックアップは、ウォームの期間に加えて最低90日保管する必要があります。<code>DeleteAfterDays</code> は <code>MoveToColdStorageAfterDays</code> ＋ 90 以上にしなければなりません。</li>
 <li><strong>早期削除：</strong>90日より前に削除すると、残りの日数分の保管料金が日割りで請求されます。</li>
 <li><strong>移行ルール：</strong>コールドへ移った後は「移行までの日数」を変更できません。AWS の推奨はウォームに8日以上（少なくとも1週間）置くことです。増分方式のリソースでは、フルバックアップを早くコールドへ移すと新たにウォームのフルバックアップが作られます。</li>
 <li><strong>コピー不可：</strong>コールドやアーカイブにあるバックアップはコピーできません。</li>
@@ -239,244 +184,180 @@
 <li><strong>コールドからの復元：</strong>単価が高くなります。復元テストでコールドのリカバリーポイントを選んだ場合も、コールドの復元単価が適用されます。</li>
 </ul>
 
-<h2 id="s4">4. 見積もり作業の全体の流れ</h2>
-<figure class="diagram">
-<svg class="only-desk" viewBox="0 0 980 180" role="img" aria-labelledby="tfig3d-title">
-<title id="tfig3d-title">図3 見積もり作業の流れ（本書の章立てと一致）</title>
-<defs>
-<marker id="arr-t3d" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#59636e"/></marker>
-</defs>
-<rect x="12" y="36" width="210" height="100" rx="12" fill="#fff" stroke="#d0d7de"/>
-<text x="117" y="72" text-anchor="middle" font-size="14" font-weight="700" fill="#ff9900">ステップ0</text>
-<text x="117" y="98" text-anchor="middle" font-size="15" font-weight="700" fill="#232f3e">入力値の収集</text>
-<text x="117" y="120" text-anchor="middle" font-size="12" fill="#59636e">5章</text>
-<line x1="230" y1="86" x2="258" y2="86" stroke="#59636e" stroke-width="2" marker-end="url(#arr-t3d)"/>
-<rect x="266" y="36" width="210" height="100" rx="12" fill="#fff" stroke="#d0d7de"/>
-<text x="371" y="72" text-anchor="middle" font-size="14" font-weight="700" fill="#ff9900">ステップ1〜7</text>
-<text x="371" y="98" text-anchor="middle" font-size="15" font-weight="700" fill="#232f3e">計算ツール入力</text>
-<text x="371" y="120" text-anchor="middle" font-size="12" fill="#59636e">6章・Show calculations</text>
-<line x1="484" y1="86" x2="512" y2="86" stroke="#59636e" stroke-width="2" marker-end="url(#arr-t3d)"/>
-<rect x="520" y="36" width="210" height="100" rx="12" fill="#fff" stroke="#d0d7de"/>
-<text x="625" y="72" text-anchor="middle" font-size="14" font-weight="700" fill="#ff9900">ステップ8</text>
-<text x="625" y="98" text-anchor="middle" font-size="15" font-weight="700" fill="#232f3e">手計算</text>
-<text x="625" y="120" text-anchor="middle" font-size="12" fill="#59636e">7〜8章・対象外も足す</text>
-<line x1="738" y1="86" x2="766" y2="86" stroke="#59636e" stroke-width="2" marker-end="url(#arr-t3d)"/>
-<rect x="774" y="36" width="190" height="100" rx="12" fill="#232f3e"/>
-<text x="869" y="72" text-anchor="middle" font-size="14" font-weight="700" fill="#ff9900">ステップ9</text>
-<text x="869" y="98" text-anchor="middle" font-size="15" font-weight="700" fill="#fff">照合</text>
-<text x="869" y="120" text-anchor="middle" font-size="12" fill="#e8edf2">9章・Cost Explorer</text>
-</svg>
-<svg class="only-phone" viewBox="0 0 360 520" role="img" aria-labelledby="tfig3p-title">
-<title id="tfig3p-title">図3 見積もり作業の流れ（本書の章立てと一致）</title>
-<defs>
-<marker id="arr-t3p" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#59636e"/></marker>
-</defs>
-<rect x="28" y="12" width="304" height="84" rx="12" fill="#fff" stroke="#d0d7de"/>
-<text x="180" y="44" text-anchor="middle" font-size="14" font-weight="700" fill="#ff9900">ステップ0・5章</text>
-<text x="180" y="72" text-anchor="middle" font-size="16" font-weight="700" fill="#232f3e">入力値の収集</text>
-<line x1="180" y1="100" x2="180" y2="124" stroke="#59636e" stroke-width="2" marker-end="url(#arr-t3p)"/>
-<rect x="28" y="132" width="304" height="84" rx="12" fill="#fff" stroke="#d0d7de"/>
-<text x="180" y="164" text-anchor="middle" font-size="14" font-weight="700" fill="#ff9900">ステップ1〜7・6章</text>
-<text x="180" y="192" text-anchor="middle" font-size="16" font-weight="700" fill="#232f3e">計算ツール入力</text>
-<line x1="180" y1="220" x2="180" y2="244" stroke="#59636e" stroke-width="2" marker-end="url(#arr-t3p)"/>
-<rect x="28" y="252" width="304" height="84" rx="12" fill="#fff" stroke="#d0d7de"/>
-<text x="180" y="284" text-anchor="middle" font-size="14" font-weight="700" fill="#ff9900">ステップ8・7〜8章</text>
-<text x="180" y="312" text-anchor="middle" font-size="16" font-weight="700" fill="#232f3e">手計算（対象外も足す）</text>
-<line x1="180" y1="340" x2="180" y2="364" stroke="#59636e" stroke-width="2" marker-end="url(#arr-t3p)"/>
-<rect x="28" y="372" width="304" height="84" rx="12" fill="#232f3e"/>
-<text x="180" y="404" text-anchor="middle" font-size="14" font-weight="700" fill="#ff9900">ステップ9・9章</text>
-<text x="180" y="432" text-anchor="middle" font-size="16" font-weight="700" fill="#fff">照合（Cost Explorer）</text>
-</svg>
-<figcaption>図3 見積もり作業の流れ（本書の章立てと一致）</figcaption>
-</figure>
+<h2>4. 見積もり作業の全体の流れ</h2>
+<figure data-fig="workflow"><div class="flow">
+<div class="fbox c5"><b>ステップ0　入力値の収集</b>一次データ量・年間増加率・日次変更率・保存期間・ウォーム／コールド方針・コピー・復元量</div>
+<div class="arrow">→</div>
+<div class="fbox c1"><b>ステップ1〜7　料金計算ツール</b>AWS Pricing Calculator（AWS Backup、東京）に入力し「Show calculations」を記録</div>
+<div class="arrow">→</div>
+<div class="fbox c3"><b>ステップ8　手計算</b>計算ツールの式を1行ずつ再現（ワークシート）＋計算ツール対象外の費用を加算</div>
+<div class="arrow">→</div>
+<div class="fbox c2"><b>ステップ9　照合</b>差分の原因を確認。運用開始後は Cost Explorer の実績と比較して補正</div>
+</div><figcaption>図3　見積もり作業の流れ（本書の章立てと一致）</figcaption></figure>
 
-<h2 id="s5">5. ステップ0：入力値の収集と測定方法</h2>
-<div class="table-wrap"><table class="sheet">
+<h2>5. ステップ0：入力値の収集と測定方法</h2>
+<div class="tbl"><table>
 <tr><th>入力値</th><th>計算ツールの欄</th><th>DynamoDB での測り方</th><th>Redshift での測り方</th></tr>
-<tr><td>一次データ量（S）</td><td>Amount of primary data to be backed up（使用量。プロビジョン量ではない）</td><td>DescribeTable の TableSizeBytes（約6時間ごとに更新）。既存の AWS Backup リカバリーポイントの BackupSizeInBytes（リカバリーポイントのサイズ）</td><td>プロビジョンド：SVV_TABLE_INFO の size（1MBブロック数）の合計、または STV_PARTITIONS の used（1MBブロック数）。Serverless：CloudWatch DataStorage（MB）</td></tr>
+<tr><td>一次データ量（S）</td><td>Amount of primary data to be backed up（使用量。プロビジョン量ではない）</td><td><code>DescribeTable</code> の <code>TableSizeBytes</code>（約6時間ごとに更新）。既存の AWS Backup リカバリーポイントの <code>BackupSizeInBytes</code>（リカバリーポイントのサイズ）</td><td>プロビジョンド：<code>SVV_TABLE_INFO</code> の <code>size</code>（1MBブロック数）の合計、または <code>STV_PARTITIONS</code> の <code>used</code>（1MBブロック数）。Serverless：CloudWatch <code>DataStorage</code>（MB）</td></tr>
 <tr><td>年間増加率（g）</td><td>Estimated annual increase in primary data (%)</td><td colspan="2">5.1 を参照</td></tr>
 <tr><td>日次変更率（d）</td><td>Estimated daily change of primary data (%)（業界平均0.2〜0.5%と表示）</td><td colspan="2">5.2 を参照（DynamoDB はフルバックアップなので保管料には効かない）</td></tr>
-<tr><td>保存期間（ウォーム W／コールド C）</td><td>Days in Warm Storage／Days in Cold Storage（毎時・毎日・毎週・毎月）</td><td colspan="2">バックアッププランのルール（aws backup get-backup-plan の Lifecycle：MoveToColdStorageAfterDays、DeleteAfterDays）。新規の場合は社内の保存要件</td></tr>
-<tr><td>リージョン間コピー</td><td>なし（コピー先リージョンを別に見積もる）</td><td colspan="2">ルールの CopyActions（コピー先ボールト ARN、コピーのライフサイクル）。実績は list-copy-jobs（CopyJob の BackupSizeInBytes）</td></tr>
+<tr><td>保存期間（ウォーム W／コールド C）</td><td>Days in Warm Storage／Days in Cold Storage（毎時・毎日・毎週・毎月）</td><td colspan="2">バックアッププランのルール（<code>aws backup get-backup-plan</code> の <code>Lifecycle</code>：<code>MoveToColdStorageAfterDays</code>、<code>DeleteAfterDays</code>）。新規の場合は社内の保存要件</td></tr>
+<tr><td>リージョン間コピー</td><td>なし（コピー先リージョンを別に見積もる）</td><td colspan="2">ルールの <code>CopyActions</code>（コピー先ボールト ARN、コピーのライフサイクル）。実績は <code>list-copy-jobs</code>（<code>CopyJob</code> の <code>BackupSizeInBytes</code>）</td></tr>
 <tr><td>復元量</td><td>なし（手計算）</td><td colspan="2">DR 計画・復元テスト計画（年間回数 × 対象 GB）。実績は復元ジョブの履歴</td></tr>
 </table></div>
-<h3 id="s51">5.1 （a）一次データの年間増加率の確認方法</h3>
-<p class="formula">年間増加率(%) ＝（現在のサイズ ÷ 12か月前のサイズ − 1）× 100</p>
-<p>履歴が12か月に満たない場合は、月次増加率 m から（1 ＋ m）<sup>12</sup> − 1 で換算します（推定値として扱います）。</p>
-<div class="table-wrap"><table class="wide">
-<tr><th>対象</th><th>公式に記載のある測定手段</th><th>注意点</th></tr>
-<tr><td>DynamoDB</td><td>DescribeTable の TableSizeBytes／IndexSizeBytes。Cost Explorer／CUR の APN1-TimedStorage-ByteHrs（テーブルストレージ GB-月の月次推移）。既存バックアップの BackupSizeInBytes の推移（list-recovery-points-by-backup-vault／DescribeRecoveryPoint）</td><td>TableSizeBytes は現在値だけで履歴がないため、定期的に記録する必要がある。値に項目ごとのオーバーヘッド（100バイト）は含まれない。Cost Explorer はアカウント全体の値なので、テーブル単位にはタグや CUR のリソース ID で絞り込む</td></tr>
-<tr><td>Redshift プロビジョンド</td><td>CloudWatch PercentageDiskSpaceUsed（%）の推移 × 容量。SVV_TABLE_INFO.size の合計（MB）の定期記録。Cost Explorer の RMS 使用量（APN1-RMS:ra3.* など、GB-月）</td><td>CloudWatch のデータは15か月で期限切れ（1時間粒度は455日保持）。STV_PARTITIONS は内部予約領域を含む生容量なので大きめに出る</td></tr>
-<tr><td>Redshift Serverless</td><td>CloudWatch DataStorage（MB、Namespace 単位）の推移。Cost Explorer の APN1-RMS:Serverless</td><td>同上</td></tr>
-<tr><td>汎用（AWS Backup 利用中）</td><td>リカバリーポイントの BackupSizeInBytes の推移。Cost Explorer の usagetype APN1-WarmStorage-ByteHrs-* の月次推移</td><td>BackupSizeInBytes は種類によって意味が違う。DynamoDB はリカバリーポイントのサイズ、EFS は差分の転送量、RDS は 0、EBS はボリュームサイズ。Redshift は値が入らない</td></tr>
-</table></div>
-<h3 id="s52">5.2 （b）日次変更率の確認方法</h3>
-<p class="formula">日次変更率(%) ＝ 1日に変更されたデータ量 ÷ 一次データ量 × 100</p>
-<div class="table-wrap"><table class="wide">
-<tr><th>対象</th><th>公式に記載のある測定手段</th><th>注意点</th></tr>
-<tr><td>Redshift プロビジョンド</td><td>describe-cluster-snapshots の ActualIncrementalBackupSizeInMegaBytes（増分バックアップのサイズ）を24時間分合計し、TotalBackupSizeInMegaBytes（復元に必要なデータ全体）で割る。describe-storage の TotalBackupSizeInMegaBytes（アカウントのスナップショット使用量）の日次の増え方。RG：CloudWatch RgUniqueSnapshotStorage の日次の増え方</td><td>自動スナップショットの間隔に依存する。スナップショット使用量の増加は、削除や期限切れと相殺される</td></tr>
-<tr><td>Redshift Serverless</td><td>CloudWatch ServerlessUniqueSnapshotStorage（全アクティブ手動スナップショットの一意データブロック、MB）の日次増分。DataStorage の差分（純増分だけ。更新や削除は反映されない）</td><td>アカウント全体の値。手動スナップショットを毎日取得している場合に有効</td></tr>
-<tr><td>DynamoDB</td><td>CloudWatch ConsumedWriteCapacityUnits（Sum、1日）× 1KB を「書き込まれたデータ量の上限の目安」とする。増分エクスポート（ExportType＝INCREMENTAL_EXPORT、24時間の期間）の BilledSizeBytes／ItemCount</td><td>WCU は1KB単位で切り上げられ、同じ項目の上書きも数えるため、変更率は過大になる。増分エクスポートには PITR が必要で、エクスポート料金がかかる。AWS Backup の DynamoDB バックアップは毎回フルなので、日次変更率は保管料に影響しない</td></tr>
-<tr><td>汎用（増分型リソース）</td><td>バックアップジョブの BackupSizeInBytes／BytesTransferred（DescribeBackupJob）。EFS の BackupSizeInBytes は差分の転送量</td><td>リソースの種類によって意味が違う（5.1 の注意点を参照）</td></tr>
-</table></div>
-<p>本書では、公式ドキュメントで存在を確認した API フィールドとメトリクスだけを挙げています。RecoveryPointByBackupVault（list-recovery-points-by-backup-vault の要素）には BackupSizeInBytes と CalculatedLifecycle（MoveToColdStorageAt、DeleteAt）がありますが、StorageClass（WARM／COLD）は DescribeRecoveryPoint の応答にあります。</p>
 
-<h2 id="s6">6. ステップ1〜7：AWS Pricing Calculator への入力</h2>
+<h3>5.1 （a）一次データの年間増加率の確認方法</h3>
+<p>式：<strong>年間増加率(%) ＝（現在のサイズ ÷ 12か月前のサイズ − 1）× 100</strong>。履歴が12か月に満たない場合は、月次増加率 m から（1 ＋ m）<sup>12</sup> − 1 で換算します（推定値として扱います）。</p>
+<div class="tbl"><table>
+<tr><th>対象</th><th>公式に記載のある測定手段</th><th>注意点</th></tr>
+<tr><td>DynamoDB</td><td>・<code>DescribeTable</code> の <code>TableSizeBytes</code>／<code>IndexSizeBytes</code><br>・Cost Explorer／CUR の <code>APN1-TimedStorage-ByteHrs</code>（テーブルストレージ GB-月の月次推移）<br>・既存バックアップの <code>BackupSizeInBytes</code> の推移（<code>list-recovery-points-by-backup-vault</code>／<code>DescribeRecoveryPoint</code>）</td><td><code>TableSizeBytes</code> は現在値だけで履歴がないため、定期的に記録する必要がある。値に項目ごとのオーバーヘッド（100バイト）は含まれない。Cost Explorer はアカウント全体の値なので、テーブル単位にはタグや CUR のリソース ID で絞り込む</td></tr>
+<tr><td>Redshift プロビジョンド</td><td>・CloudWatch <code>PercentageDiskSpaceUsed</code>（%）の推移 × 容量<br>・<code>SVV_TABLE_INFO.size</code> の合計（MB）の定期記録<br>・Cost Explorer の RMS 使用量（<code>APN1-RMS:ra3.*</code> など、GB-月）</td><td>CloudWatch のデータは15か月で期限切れ（1時間粒度は455日保持）。<code>STV_PARTITIONS</code> は内部予約領域を含む生容量なので大きめに出る</td></tr>
+<tr><td>Redshift Serverless</td><td>・CloudWatch <code>DataStorage</code>（MB、Namespace 単位）の推移<br>・Cost Explorer の <code>APN1-RMS:Serverless</code></td><td>同上</td></tr>
+<tr><td>汎用（AWS Backup 利用中）</td><td>・リカバリーポイントの <code>BackupSizeInBytes</code> の推移<br>・Cost Explorer の usagetype <code>APN1-WarmStorage-ByteHrs-*</code> の月次推移</td><td><code>BackupSizeInBytes</code> は種類によって意味が違う。DynamoDB はリカバリーポイントのサイズ、EFS は差分の転送量、RDS は 0、EBS はボリュームサイズ。Redshift は値が入らない</td></tr>
+</table></div>
+
+<h3>5.2 （b）日次変更率の確認方法</h3>
+<p>式：<strong>日次変更率(%) ＝ 1日に変更されたデータ量 ÷ 一次データ量 × 100</strong></p>
+<div class="tbl"><table>
+<tr><th>対象</th><th>公式に記載のある測定手段</th><th>注意点</th></tr>
+<tr><td>Redshift プロビジョンド</td><td>・<code>describe-cluster-snapshots</code> の <code>ActualIncrementalBackupSizeInMegaBytes</code>（増分バックアップのサイズ）を24時間分合計し、<code>TotalBackupSizeInMegaBytes</code>（復元に必要なデータ全体）で割る<br>・<code>describe-storage</code> の <code>TotalBackupSizeInMegaBytes</code>（アカウントのスナップショット使用量）の日次の増え方<br>・RG：CloudWatch <code>RgUniqueSnapshotStorage</code> の日次の増え方</td><td>自動スナップショットの間隔に依存する。スナップショット使用量の増加は、削除や期限切れと相殺される</td></tr>
+<tr><td>Redshift Serverless</td><td>・CloudWatch <code>ServerlessUniqueSnapshotStorage</code>（全アクティブ手動スナップショットの一意データブロック、MB）の日次増分<br>・<code>DataStorage</code> の差分（純増分だけ。更新や削除は反映されない）</td><td>アカウント全体の値。手動スナップショットを毎日取得している場合に有効</td></tr>
+<tr><td>DynamoDB</td><td>・CloudWatch <code>ConsumedWriteCapacityUnits</code>（Sum、1日）× 1KB を「書き込まれたデータ量の上限の目安」とする<br>・増分エクスポート（<code>ExportType</code>＝<code>INCREMENTAL_EXPORT</code>、24時間の期間）の <code>BilledSizeBytes</code>／<code>ItemCount</code></td><td>WCU は1KB単位で切り上げられ、同じ項目の上書きも数えるため、変更率は過大になる。増分エクスポートには PITR が必要で、エクスポート料金がかかる。<strong>AWS Backup の DynamoDB バックアップは毎回フルなので、日次変更率は保管料に影響しない</strong></td></tr>
+<tr><td>汎用（増分型リソース）</td><td>・バックアップジョブの <code>BackupSizeInBytes</code>／<code>BytesTransferred</code>（<code>DescribeBackupJob</code>）。EFS の <code>BackupSizeInBytes</code> は差分の転送量</td><td>リソースの種類によって意味が違う（5.1 の注意点を参照）</td></tr>
+</table></div>
+<div class="warn">本書では、公式ドキュメントで存在を確認した API フィールドとメトリクスだけを挙げています。<code>RecoveryPointByBackupVault</code>（<code>list-recovery-points-by-backup-vault</code> の要素）には <code>BackupSizeInBytes</code> と <code>CalculatedLifecycle</code>（<code>MoveToColdStorageAt</code>、<code>DeleteAt</code>）がありますが、<code>StorageClass</code>（WARM／COLD）は <code>DescribeRecoveryPoint</code> の応答にあります。</div>
+
+<h2>6. ステップ1〜7：AWS Pricing Calculator への入力</h2>
 <ol>
-<li><strong>ステップ1 サービスの追加：</strong><a href="https://calculator.aws/#/addService" target="_blank" rel="noopener">https://calculator.aws/#/addService</a> で「AWS Backup」を検索し、［Configure］を選ぶ（画面は #/createCalculator/Backup）。</li>
-<li><strong>ステップ2 場所：</strong>Description（任意）を入力する。Choose a location type は「Region」（既定）のまま。Choose a Region を既定の US East (Ohio) から Asia Pacific (Tokyo) に変える。</li>
-<li><strong>ステップ3 対象の選択：</strong>Service Settings の「Select backup resources that you want to estimate」で、既定でオンになっている EFS Backup のチェックを外す（不要な場合）。DynamoDB Backup と／または Redshift Backup にチェックを入れる（全15種類。チェックごとに「&lt;X&gt; Backup feature」の欄が開く）。</li>
-<li><strong>ステップ4 DynamoDB Backup feature：</strong>
+<li><strong>ステップ1　サービスの追加：</strong><a href="https://calculator.aws/#/addService">https://calculator.aws/#/addService</a> で「AWS Backup」を検索し、［Configure］を選ぶ（画面は <code>#/createCalculator/Backup</code>）。</li>
+<li><strong>ステップ2　場所：</strong>Description（任意）を入力する。Choose a location type は「Region」（既定）のまま。Choose a Region を既定の US East (Ohio) から <strong>Asia Pacific (Tokyo)</strong> に変える。</li>
+<li><strong>ステップ3　対象の選択：</strong>Service Settings の「Select backup resources that you want to estimate」で、既定でオンになっている <strong>EFS Backup のチェックを外す</strong>（不要な場合）。<strong>DynamoDB Backup</strong> と／または <strong>Redshift Backup</strong> にチェックを入れる（全15種類。チェックごとに「&lt;X&gt; Backup feature」の欄が開く）。</li>
+<li><strong>ステップ4　DynamoDB Backup feature：</strong>
 <ul>
 <li>Amount of primary data to be backed up：値と単位（MB／GB／TB、既定 GB）← ステップ0の S</li>
 <li>Estimated annual increase in primary data (%)：← g（既定0）</li>
 <li>Estimated daily change of primary data (%)：← d（既定0。DynamoDB の結果には現れない）</li>
 <li>Days in Warm Storage：Hourly backups (Days)／Daily backups (Days)／Weekly backups (Weeks)／Monthly backups (Months) ← バックアップルールごとの W</li>
 <li>Days in Cold Storage：同じ4欄 ← C（コールドを使う場合のみ）</li>
-</ul>
-</li>
-<li><strong>ステップ5 Redshift Backup feature：</strong>DynamoDB と同じ欄。ただし Days in Cold Storage はない。注意書き：「計算ツールは最初の50TB/月の Redshift 単価を使う。50TB を超えて保存する場合、実際の費用は低くなる可能性がある」。</li>
-<li><strong>ステップ6 計算過程の記録：</strong>各欄の［Show calculations］を開き、表示された式をすべて記録する（ステップ8で1行ずつ照合する）。</li>
-<li><strong>ステップ7 対象外の確認：</strong>パネルの注意書きのとおり、計算ツールは標準ボールトの保管料金だけを見積もります。データ転送、復元、Audit Manager、GET リクエストは含まれません。結果は「1年目の平均月額」です。リージョン間・アカウント間コピーは対象外のため、コピーごとに別の見積もり（コピー先リージョン）を作ります。論理エアギャップボールトも対象外で、標準ボールトより15%高くなります。重複するバックアップルールの最適化は一部だけです。</li>
+</ul></li>
+<li><strong>ステップ5　Redshift Backup feature：</strong>DynamoDB と同じ欄。ただし <strong>Days in Cold Storage はない</strong>。注意書き：「計算ツールは最初の50TB/月の Redshift 単価を使う。50TB を超えて保存する場合、実際の費用は低くなる可能性がある」。</li>
+<li><strong>ステップ6　計算過程の記録：</strong>各欄の［Show calculations］を開き、表示された式をすべて記録する（ステップ8で1行ずつ照合する）。</li>
+<li><strong>ステップ7　対象外の確認：</strong>パネルの注意書きのとおり、計算ツールは<strong>標準ボールトの保管料金だけ</strong>を見積もります。データ転送、復元、Audit Manager、GET リクエストは含まれません。結果は「1年目の平均月額」です。リージョン間・アカウント間コピーは対象外のため、コピーごとに別の見積もり（コピー先リージョン）を作ります。論理エアギャップボールトも対象外で、標準ボールトより15%高くなります。重複するバックアップルールの最適化は一部だけです。</li>
 </ol>
 
-<h2 id="s7">7. ステップ8：手計算（計算ツールの式の再現）</h2>
+<h2>7. ステップ8：手計算（計算ツールの式の再現）</h2>
 <p>計算ツールの Show calculations（DynamoDB、1,000GB、年間増加0%、日次変更1%、毎日バックアップ）は次の式でした。ワークシートの各行は、計算ツールの表示の各行と1対1で対応します。</p>
-<h3 id="s71">7.1 変数</h3>
-<p>S＝一次データ量（GB）、g＝年間増加率（%）、W＝ウォーム保存日数（毎日バックアップの件数）、C＝コールド保存日数、Pw／Pc＝ウォーム／コールド単価（USD/GB-月）。DynamoDB は Pw＝0.114、Pc＝0.0342、Redshift は Pw＝0.025 です。</p>
-<h3 id="s72">7.2 ワークシート（毎日バックアップ）</h3>
-<div class="table-wrap"><table class="sheet">
+<h3>7.1 変数</h3>
+<p>S＝一次データ量（GB）、g＝年間増加率（%）、W＝ウォーム保存日数（毎日バックアップの件数）、C＝コールド保存日数、P<sub>w</sub>／P<sub>c</sub>＝ウォーム／コールド単価（USD/GB-月）。DynamoDB は P<sub>w</sub>＝0.114、P<sub>c</sub>＝0.0342、Redshift は P<sub>w</sub>＝0.025 です。</p>
+<h3>7.2 ワークシート（毎日バックアップ）</h3>
+<div class="tbl"><table>
 <tr><th>行</th><th>計算</th><th>計算ツールの表示</th><th>例A：W＝30</th><th>例B：W＝90、C＝275</th></tr>
-<tr><td>W1</td><td>期末サイズ E ＝ S × (1 ＋ g/100)</td><td>starting data size x annual growth rate = ending size of data</td><td>1,000 × 1.00 ＝ 1,000.00</td><td>1,000.00</td></tr>
-<tr><td>W2</td><td>S ＋ E</td><td>GB + ending size of data</td><td>2,000.00</td><td>2,000.00</td></tr>
-<tr><td>W3</td><td>平均サイズ B ＝ (S＋E) ÷ 2</td><td>average amount of data to be backed up (base storage)</td><td>1,000.00</td><td>1,000.00</td></tr>
-<tr><td>W4</td><td>Zw ＝ W × 0.5</td><td>days x 0.5 average usage level = effective days at zero usage</td><td>15.00</td><td>45.00</td></tr>
-<tr><td>W5</td><td>365 − Zw</td><td>effective days at steady-state usage</td><td>350.00</td><td>320.00</td></tr>
-<tr><td>W6</td><td>fw ＝ W5 ÷ 365</td><td>effective years at steady-state usage</td><td>0.958904</td><td>0.876712</td></tr>
-<tr><td>W7</td><td>ウォーム月額 ＝ B × W × fw × Pw</td><td>Daily Backups - Warm Storage (Monthly Cost)</td><td>3,279.45</td><td>8,995.07</td></tr>
-<tr><td>W8</td><td>定常日数 Sc ＝ 365 − W − C</td><td>days at steady-state level of storage</td><td>—</td><td>0.00</td></tr>
-<tr><td>W9</td><td>C × 0.5</td><td>effective days ... during ramp-up</td><td>—</td><td>137.50</td></tr>
-<tr><td>W10</td><td>fc ＝ W9 ÷ 365</td><td>year in ramp-up</td><td>—</td><td>0.376712</td></tr>
-<tr><td>W11</td><td>コールド月額 ＝ B × C × round(fc, 2) × Pc</td><td>Daily Backups - Cold Storage (Monthly Cost)（係数は 0.38 と表示）</td><td>—</td><td>3,573.90</td></tr>
-<tr class="total"><td>W12</td><td>合計 ＝ W7 ＋ W11</td><td>Total cost (monthly)</td><td>3,279.45</td><td>12,568.97</td></tr>
+<tr><td style="white-space:nowrap">W1</td><td>期末サイズ E ＝ S × (1 ＋ g/100)</td><td>starting data size x annual growth rate = ending size of data</td><td class="num">1,000 × 1.00 ＝ 1,000.00</td><td class="num">1,000.00</td></tr>
+<tr><td style="white-space:nowrap">W2</td><td>S ＋ E</td><td>GB + ending size of data</td><td class="num">2,000.00</td><td class="num">2,000.00</td></tr>
+<tr><td style="white-space:nowrap">W3</td><td>平均サイズ B ＝ (S＋E) ÷ 2</td><td>average amount of data to be backed up (base storage)</td><td class="num">1,000.00</td><td class="num">1,000.00</td></tr>
+<tr><td style="white-space:nowrap">W4</td><td>Z<sub>w</sub> ＝ W × 0.5</td><td>days x 0.5 average usage level = effective days at zero usage</td><td class="num">15.00</td><td class="num">45.00</td></tr>
+<tr><td style="white-space:nowrap">W5</td><td>365 − Z<sub>w</sub></td><td>effective days at steady-state usage</td><td class="num">350.00</td><td class="num">320.00</td></tr>
+<tr><td style="white-space:nowrap">W6</td><td>f<sub>w</sub> ＝ W5 ÷ 365</td><td>effective years at steady-state usage</td><td class="num">0.958904</td><td class="num">0.876712</td></tr>
+<tr><td style="white-space:nowrap">W7</td><td>ウォーム月額 ＝ B × W × f<sub>w</sub> × P<sub>w</sub></td><td>Daily Backups - Warm Storage (Monthly Cost)</td><td class="num">3,279.45</td><td class="num">8,995.07</td></tr>
+<tr><td style="white-space:nowrap">W8</td><td>定常日数 S<sub>c</sub> ＝ 365 − W − C</td><td>days at steady-state level of storage</td><td class="num">—</td><td class="num">0.00</td></tr>
+<tr><td style="white-space:nowrap">W9</td><td>C × 0.5</td><td>effective days ... during ramp-up</td><td class="num">—</td><td class="num">137.50</td></tr>
+<tr><td style="white-space:nowrap">W10</td><td>f<sub>c</sub> ＝ W9 ÷ 365</td><td>year in ramp-up</td><td class="num">—</td><td class="num">0.376712</td></tr>
+<tr><td style="white-space:nowrap">W11</td><td>コールド月額 ＝ B × C × round(f<sub>c</sub>, 2) × P<sub>c</sub></td><td>Daily Backups - Cold Storage (Monthly Cost)（係数は 0.38 と表示）</td><td class="num">—</td><td class="num">3,573.90</td></tr>
+<tr class="total"><td style="white-space:nowrap">W12</td><td>合計 ＝ W7 ＋ W11</td><td>Total cost (monthly)</td><td class="num">3,279.45</td><td class="num">12,568.97</td></tr>
 </table></div>
-<figure class="diagram">
-<svg class="only-desk" viewBox="0 0 980 280" role="img" aria-labelledby="tfig4d-title">
-<title id="tfig4d-title">図4 料金計算ツールの「立ち上がり（ramp-up）」の考え方</title>
-<text x="24" y="28" font-size="14" fill="#59636e">毎日1件を W 日保存。1年目の最初の W 日は件数が 0 から増える</text>
-<line x1="70" y1="210" x2="620" y2="210" stroke="#d0d7de"/>
-<line x1="70" y1="48" x2="70" y2="210" stroke="#d0d7de"/>
-<line x1="70" y1="129" x2="500" y2="129" stroke="#0969da" stroke-dasharray="5 4"/>
-<text x="508" y="124" font-size="12" fill="#0969da">平均 0.5×W</text>
-<rect x="96" y="190" width="36" height="20" fill="#ff9900"/><text x="114" y="230" text-anchor="middle" font-size="11" fill="#59636e">1</text>
-<rect x="148" y="170" width="36" height="40" fill="#ff9900"/><text x="166" y="230" text-anchor="middle" font-size="11" fill="#59636e">2</text>
-<rect x="200" y="150" width="36" height="60" fill="#ff9900"/>
-<rect x="252" y="130" width="36" height="80" fill="#ff9900"/>
-<rect x="304" y="110" width="36" height="100" fill="#ff9900"/>
-<rect x="356" y="90" width="36" height="120" fill="#ff9900"/>
-<rect x="408" y="70" width="36" height="140" fill="#e47911"/><text x="426" y="230" text-anchor="middle" font-size="11" fill="#59636e">W</text>
-<text x="250" y="256" text-anchor="middle" font-size="13" fill="#1f2328">保存開始からの日数（件数は直線的に増える）</text>
-<text x="700" y="80" font-size="14" font-weight="700" fill="#232f3e">定常状態</text>
-<text x="700" y="106" font-size="13" fill="#1f2328">保管量 ＝ B × W</text>
-<text x="700" y="146" font-size="14" font-weight="700" fill="#232f3e">1年目の係数 fw</text>
-<text x="700" y="172" font-size="13" fill="#1f2328">立ち上がりを 0.5 倍</text>
-<text x="700" y="194" font-size="13" fill="#1f2328">fw ＝ (365 − W×0.5) ÷ 365</text>
-<text x="700" y="224" font-size="13" fill="#59636e">コールドは W 日目以降</text>
-<text x="700" y="246" font-size="13" fill="#59636e">に増えるので fc は小さい</text>
-</svg>
-<svg class="only-phone" viewBox="0 0 360 420" role="img" aria-labelledby="tfig4p-title">
-<title id="tfig4p-title">図4 料金計算ツールの「立ち上がり（ramp-up）」の考え方</title>
-<text x="16" y="28" font-size="14" fill="#1f2328">件数は 0 から W まで増える</text>
-<line x1="36" y1="200" x2="330" y2="200" stroke="#d0d7de"/>
-<line x1="36" y1="48" x2="36" y2="200" stroke="#d0d7de"/>
-<line x1="36" y1="124" x2="300" y2="124" stroke="#0969da" stroke-dasharray="5 4"/>
-<text x="304" y="120" font-size="12" fill="#0969da">0.5×W</text>
-<rect x="56" y="180" width="28" height="20" fill="#ff9900"/>
-<rect x="96" y="160" width="28" height="40" fill="#ff9900"/>
-<rect x="136" y="140" width="28" height="60" fill="#ff9900"/>
-<rect x="176" y="120" width="28" height="80" fill="#ff9900"/>
-<rect x="216" y="100" width="28" height="100" fill="#ff9900"/>
-<rect x="256" y="80" width="28" height="120" fill="#e47911"/>
-<text x="70" y="222" text-anchor="middle" font-size="12" fill="#59636e">1日</text>
-<text x="270" y="222" text-anchor="middle" font-size="12" fill="#59636e">W日</text>
-<text x="16" y="264" font-size="15" font-weight="700" fill="#232f3e">1年目は平均 0.5 倍</text>
-<text x="16" y="292" font-size="14" fill="#1f2328">fw ＝ (365 − W×0.5) ÷ 365</text>
-<text x="16" y="324" font-size="14" fill="#1f2328">定常後の保管量は B × W</text>
-<text x="16" y="360" font-size="14" fill="#59636e">コールドは W 日目以降に増える</text>
-<text x="16" y="386" font-size="14" fill="#59636e">ため、係数 fc はさらに小さい</text>
-</svg>
-<figcaption>図4 料金計算ツールの「立ち上がり（ramp-up）」の考え方</figcaption>
-</figure>
+<figure data-fig="ramp"><svg class="sv-w" viewBox="0 0 680 400" role="img" aria-label="1年目の保管件数の増え方" style="font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo','Noto Sans CJK JP',sans-serif" xmlns="http://www.w3.org/2000/svg">
+<rect x="0" y="0" width="680" height="400" fill="#fff"/>
+<text x="355" y="30" text-anchor="middle" font-size="18" font-weight="700">1年目に保管件数が増えていく様子（毎日1件・ウォーム90日＋コールド275日）</text>
+<path d="M70.0,300.0 L210.54794520547946,228.0 L640.0,228.0 L640.0,300.0 Z" fill="#ffd9a8" opacity=".7"/><path d="M210.54794520547946,300.0 L640.0,80.0 L640.0,300.0 Z" fill="#cfe2ff" opacity=".8"/>
+<path d="M70.0,300.0 L210.54794520547946,228.0 L640.0,228.0" fill="none" stroke="#c55a11" stroke-width="3"/><path d="M210.54794520547946,300.0 L640.0,80.0" fill="none" stroke="#1f4e79" stroke-width="3"/>
+<line x1="70" y1="300" x2="640" y2="300" stroke="#555"/><line x1="70" y1="300" x2="70" y2="50" stroke="#555"/>
+<line x1="70.0" y1="300" x2="70.0" y2="306" stroke="#555"/><text x="70.0" y="324" text-anchor="middle" font-size="14">0日</text><line x1="210.54794520547946" y1="300" x2="210.54794520547946" y2="306" stroke="#555"/><text x="210.54794520547946" y="324" text-anchor="middle" font-size="14">90日</text><line x1="351.09589041095893" y1="300" x2="351.09589041095893" y2="306" stroke="#555"/><text x="351.09589041095893" y="324" text-anchor="middle" font-size="14">180日</text><line x1="491.64383561643837" y1="300" x2="491.64383561643837" y2="306" stroke="#555"/><text x="491.64383561643837" y="324" text-anchor="middle" font-size="14">270日</text><line x1="640.0" y1="300" x2="640.0" y2="306" stroke="#555"/><text x="640.0" y="324" text-anchor="middle" font-size="14">365日</text><line x1="64" y1="300.0" x2="70" y2="300.0" stroke="#555"/><text x="60" y="305.0" text-anchor="end" font-size="14">0</text><line x1="64" y1="228.0" x2="70" y2="228.0" stroke="#555"/><text x="60" y="233.0" text-anchor="end" font-size="14">90</text><line x1="64" y1="156.0" x2="70" y2="156.0" stroke="#555"/><text x="60" y="161.0" text-anchor="end" font-size="14">180</text><line x1="64" y1="80.0" x2="70" y2="80.0" stroke="#555"/><text x="60" y="85.0" text-anchor="end" font-size="14">275</text>
+<text x="22" y="180.0" font-size="14" transform="rotate(-90 22 180.0)" text-anchor="middle">保管しているバックアップ件数</text>
+<text x="219.91780821917808" y="218.0" font-size="15" fill="#7a3200" font-weight="700">ウォーム：最大90件</text>
+<text x="452.6027397260274" y="136.0" font-size="15" fill="#1f4e79" font-weight="700" text-anchor="end">コールド：91日目から増加</text>
+<text x="636.0" y="72.0" font-size="14" fill="#1f4e79" text-anchor="end">365日目に275件</text>
+<text x="355" y="360" text-anchor="middle" font-size="14.5">計算ツールは「最初の期間は平均0.5倍」とみなし、1年間の平均月額を出す</text>
+<text x="355" y="384" text-anchor="middle" font-size="14.5">ウォーム係数 =(365−90×0.5)÷365=0.8767　コールド係数 = 275×0.5÷365=0.3767（表示上は0.38）</text>
+</svg><svg class="sv-n" viewBox="0 0 380 380" role="img" aria-label="1年目の保管件数の増え方（縦長）" style="font-family:'Noto Sans JP','Hiragino Kaku Gothic ProN','Hiragino Sans','Meiryo','Noto Sans CJK JP',sans-serif" xmlns="http://www.w3.org/2000/svg"><rect width="380" height="380" fill="#fff"/>
+<text x="190" y="26" text-anchor="middle" font-size="16" font-weight="700">1年目の保管件数（毎日1件）</text>
+<path d="M58.0,300.0 L132.46575342465752,225.0 L360.0,225.0 L360.0,300.0 Z" fill="#ffd9a8" opacity=".7"/>
+<path d="M132.46575342465752,300.0 L360.0,70.83333333333334 L360.0,300.0 Z" fill="#cfe2ff" opacity=".8"/>
+<path d="M58.0,300.0 L132.46575342465752,225.0 L360.0,225.0" fill="none" stroke="#c55a11" stroke-width="3"/>
+<path d="M132.46575342465752,300.0 L360.0,70.83333333333334" fill="none" stroke="#1f4e79" stroke-width="3"/>
+<line x1="58" y1="300" x2="360" y2="300" stroke="#555"/><line x1="58" y1="300" x2="58" y2="50" stroke="#555"/><text x="58.0" y="322" text-anchor="middle" font-size="14">0</text><text x="132.46575342465752" y="322" text-anchor="middle" font-size="14">90</text><text x="360.0" y="322" text-anchor="middle" font-size="14">365</text><text x="52" y="305.0" text-anchor="end" font-size="14">0</text><text x="52" y="230.0" text-anchor="end" font-size="14">90</text><text x="52" y="75.83333333333334" text-anchor="end" font-size="14">275</text>
+<text x="209.0" y="344" text-anchor="middle" font-size="14">経過日数</text>
+<rect x="20" y="352" width="16" height="12" fill="#ffd9a8"/><text x="42" y="363" font-size="14">ウォーム（90日で90件）</text>
+<rect x="210" y="352" width="16" height="12" fill="#cfe2ff"/><text x="232" y="363" font-size="14">コールド（→275件）</text></svg><p class="sv-n" style="font-size:.9em;text-align:left">計算ツールは最初の期間を平均0.5倍とみなす。ウォーム係数＝(365−90×0.5)÷365＝0.8767、コールド係数＝275×0.5÷365＝0.3767（表示上は0.38）</p><figcaption>図4　料金計算ツールの「立ち上がり（ramp-up）」の考え方</figcaption></figure>
 <ul>
-<li><strong>式の意味：</strong>毎日1件を W 日保存すると、定常状態では W 件のフルバックアップが並び、保管量は B × W GB-月になります。1年目の最初の W 日は件数が0から増えていくため、平均0.5倍とみなして差し引いています（fw）。コールドは W 日目以降に増え始めるため、fc がさらに小さくなります。</li>
-<li><strong>丸め：</strong>計算ツールは W11 で0.376712を0.38に丸めています。丸めなければ 1,000 × 275 × 0.376712 × 0.0342 ＝ 3,542.98 USD となり、計算ツールの値（3,573.90 USD）とは30.92 USD 違います。照合では丸めた係数を使ってください。</li>
+<li><strong>式の意味：</strong>毎日1件を W 日保存すると、定常状態では W 件のフルバックアップが並び、保管量は B × W GB-月になります。1年目の最初の W 日は件数が0から増えていくため、平均0.5倍とみなして差し引いています（f<sub>w</sub>）。コールドは W 日目以降に増え始めるため、f<sub>c</sub> がさらに小さくなります。</li>
+<li><strong>丸め：</strong>計算ツールは W11 で0.376712を<strong>0.38に丸めて</strong>います。丸めなければ 1,000 × 275 × 0.376712 × 0.0342 ＝ 3,542.98 USD となり、計算ツールの値（3,573.90 USD）とは30.92 USD 違います。照合では丸めた係数を使ってください。</li>
 <li><strong>年間増加率の効き方：</strong>平均サイズ B に効きます。たとえば g＝20% なら E＝1,200、B＝(1,000 ＋ 1,200) ÷ 2 ＝ 1,100 となり、W7 と W11 が1.1倍になります。</li>
-<li><strong>Redshift：</strong>同じ入力で W7 ＝ 1,000 × 30 × 0.958904 × 0.025 ＝ 719.18 USD（計算ツールと一致）。日次変更率は結果に現れず、毎日のバックアップをフルサイズとして数えています。</li>
-<li><strong>要確認：</strong>Sc ＞ 0 のとき（ウォーム＋コールドが365日未満のとき）の fc の式、毎時・毎週・毎月の欄の式、増分型リソース（EFS など）で日次変更率がどう使われるかは、今回の確認範囲外です。計算ツールで該当する欄に入力し、Show calculations で確認してください。</li>
-<li><strong>定常状態（2年目以降・増加なし）の月額：</strong>B × W × Pw ＋ B × C × Pc。例A は 3,420 USD、例B は 10,260 ＋ 9,405 ＝ 19,665 USD です。計算ツールの値は1年目の平均なので、予算では2年目以降の値も合わせて示してください。</li>
+<li><strong>Redshift：</strong>同じ入力で W7 ＝ 1,000 × 30 × 0.958904 × 0.025 ＝ <strong>719.18 USD</strong>（計算ツールと一致）。日次変更率は結果に現れず、毎日のバックアップをフルサイズとして数えています。</li>
+<li><strong>要確認：</strong>S<sub>c</sub> ＞ 0 のとき（ウォーム＋コールドが365日未満のとき）の f<sub>c</sub> の式、毎時・毎週・毎月の欄の式、増分型リソース（EFS など）で日次変更率がどう使われるかは、今回の確認範囲外です。計算ツールで該当する欄に入力し、Show calculations で確認してください。</li>
+<li><strong>定常状態（2年目以降・増加なし）の月額：</strong>B × W × P<sub>w</sub> ＋ B × C × P<sub>c</sub>。例A は 3,420 USD、例B は 10,260 ＋ 9,405 ＝ 19,665 USD です。計算ツールの値は1年目の平均なので、予算では2年目以降の値も合わせて示してください。</li>
 </ul>
 
-<h2 id="s8">8. ステップ8（続き）：計算ツール対象外の費用の手計算</h2>
-<div class="table-wrap"><table class="sheet">
+<h2>8. ステップ8（続き）：計算ツール対象外の費用の手計算</h2>
+<div class="tbl"><table>
 <tr><th>項目</th><th>手計算の式</th><th>東京の単価（USD）</th><th>例（S＝1,000GB）</th></tr>
-<tr><td>復元（DynamoDB）</td><td>年間の復元 GB ÷ 12 × 単価（ウォーム／コールド別）</td><td>0.171／0.228 /GB</td><td>1回1,000GB：171／228</td></tr>
-<tr><td>リージョン間コピーの転送</td><td>コピー回数 × 1回のコピーサイズ × 転送単価（DynamoDB はフルコピー）</td><td>0.11 /GB（東京→大阪など）</td><td>毎日30回：3,300／月</td></tr>
-<tr><td>コピー先での保管</td><td>計算ツールでコピー先リージョンの見積もりを別に作る（保存日数はコピーのライフサイクル）</td><td>大阪：ウォーム0.114／コールド0.0342</td><td>30日保存：約3,279／月</td></tr>
-<tr><td>論理エアギャップボールト</td><td>計算ツールの保管料 × 1.15（または LAGV 単価で W7／W11 を再計算）</td><td>0.1311／0.0393 /GB-月</td><td>例A：3,771.37／月</td></tr>
-<tr><td>復元テスト</td><td>テスト件数 × 1.80 ＋ 復元 GB × 復元単価</td><td>1.80 /件 ＋ 0.171 /GB</td><td>月1件：1.80 ＋ 171</td></tr>
+<tr><td>復元（DynamoDB）</td><td>年間の復元 GB ÷ 12 × 単価（ウォーム／コールド別）</td><td>0.171／0.228 /GB</td><td class="num">1回1,000GB：171／228</td></tr>
+<tr><td>リージョン間コピーの転送</td><td>コピー回数 × 1回のコピーサイズ × 転送単価（DynamoDB はフルコピー）</td><td>0.11 /GB（東京→大阪など）</td><td class="num">毎日30回：3,300／月</td></tr>
+<tr><td>コピー先での保管</td><td>計算ツールでコピー先リージョンの見積もりを別に作る（保存日数はコピーのライフサイクル）</td><td>大阪：ウォーム0.114／コールド0.0342</td><td class="num">30日保存：約3,279／月</td></tr>
+<tr><td>論理エアギャップボールト</td><td>計算ツールの保管料 × 1.15（または LAGV 単価で W7／W11 を再計算）</td><td>0.1311／0.0393 /GB-月</td><td class="num">例A：3,771.37／月</td></tr>
+<tr><td>復元テスト</td><td>テスト件数 × 1.80 ＋ 復元 GB × 復元単価</td><td>1.80 /件 ＋ 0.171 /GB</td><td class="num">月1件：1.80 ＋ 171</td></tr>
 <tr><td>コールドの早期削除</td><td>削除した GB ×（90 − コールド保管済み日数）÷ 30 × 0.0342（日割り。料金ページの記載「残り日数分の保管料」に基づく）</td><td>0.0342 /GB-月</td><td>—</td></tr>
 <tr><td>Audit Manager</td><td>評価回数 × 0.00125 ＋ AWS Config の料金</td><td>0.00125 /回</td><td>—</td></tr>
-<tr><td>DynamoDB PITR（併用する場合）</td><td>テーブルサイズ × 0.228（DynamoDB 側の料金）</td><td>0.228 /GB-月</td><td>228／月</td></tr>
+<tr><td>DynamoDB PITR（併用する場合）</td><td>テーブルサイズ × 0.228（DynamoDB 側の料金）</td><td>0.228 /GB-月</td><td class="num">228／月</td></tr>
 </table></div>
-<h3 id="s81">8.1 Redshift の実態に近い試算（参考）</h3>
+<h3>8.1 Redshift の実態に近い試算（参考）</h3>
 <p>Redshift のスナップショットは変更分だけが増える方式で課金されます（Serverless と RG は一意のデータブロック）。そのため、計算ツールのフルサイズ方式（719.18 USD）は過大になる可能性があります。参考値として、Redshift の料金ページの例（10TB、毎日5%変更、7世代 → 13TB）と同じ考え方で計算すると次のとおりです。</p>
-<p class="formula">課金スナップショット量 ≈ S ＋ S × d ×（W − 1）</p>
-<p>例：1,000 ＋ 1,000 × 1% × 29 ＝ 1,290 GB-月 × 0.025 ＝ 32.25 USD／月（定常状態の推定）</p>
-<p>この式は AWS Backup の計算ツールの式ではなく、公式の例から読み取った推定です。実績（RgUniqueSnapshotStorage、ServerlessUniqueSnapshotStorage、describe-storage、Cost Explorer の APN1-Redshift:PaidSnapshots）で必ず検証してください。</p>
+<pre>課金スナップショット量 ≈ S ＋ S × d ×（W − 1）
+例：1,000 ＋ 1,000 × 1% × 29 ＝ 1,290 GB-月 × 0.025 ＝ 32.25 USD／月（定常状態の推定）</pre>
+<p>この式は AWS Backup の計算ツールの式ではなく、公式の例から読み取った推定です。実績（<code>RgUniqueSnapshotStorage</code>、<code>ServerlessUniqueSnapshotStorage</code>、<code>describe-storage</code>、Cost Explorer の <code>APN1-Redshift:PaidSnapshots</code>）で必ず検証してください。</p>
 
-<h2 id="s9">9. ステップ9：照合</h2>
+<h2>9. ステップ9：照合</h2>
 <ol>
 <li><strong>計算ツール ⇔ ワークシート：</strong>W1〜W12 の各行を Show calculations と比べ、差が出たら丸め（W11 の 0.38）、単位（MB／GB／TB）、保存日数の欄（Days／Weeks／Months）の取り違えを確認します。</li>
-<li><strong>単価の確認：</strong>計算ツールの表示単価を価格表（Price List API（<a href="https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSBackup/current/ap-northeast-1/index.json" target="_blank" rel="noopener">https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSBackup/current/ap-northeast-1/index.json</a>））と比べます。2026年10月8日時点では、DynamoDB 0.114／0.0342、Redshift 0.025 が一致しています。</li>
+<li><strong>単価の確認：</strong>計算ツールの表示単価を価格表（<a href="https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSBackup/current/ap-northeast-1/index.json">Price List API</a>）と比べます。2026年10月8日時点では、DynamoDB 0.114／0.0342、Redshift 0.025 が一致しています。</li>
 <li><strong>対象外費用の加算：</strong>8章の項目を足して「総額」とします。</li>
-<li><strong>運用開始後の照合：</strong>Cost Explorer で usagetype（APN1-WarmStorage-ByteHrs-DynamoDB、APN1-ColdStorage-ByteHrs-DynamoDB、APN1-Restore-WarmBytes-DynamoDB、APN1-CrossRegion-WarmBytes-DynamoDB、APN1-Redshift:PaidSnapshots など）ごとの使用量と金額を月次で確認し、入力値（S、g、d、W、C）を補正します。DynamoDB の高度な機能が無効だと、保管料は DynamoDB の APN1-TimedBackupStorage-ByteHrs に計上されます。</li>
+<li><strong>運用開始後の照合：</strong>Cost Explorer で usagetype（<code>APN1-WarmStorage-ByteHrs-DynamoDB</code>、<code>APN1-ColdStorage-ByteHrs-DynamoDB</code>、<code>APN1-Restore-WarmBytes-DynamoDB</code>、<code>APN1-CrossRegion-WarmBytes-DynamoDB</code>、<code>APN1-Redshift:PaidSnapshots</code> など）ごとの使用量と金額を月次で確認し、入力値（S、g、d、W、C）を補正します。DynamoDB の高度な機能が無効だと、保管料は DynamoDB の <code>APN1-TimedBackupStorage-ByteHrs</code> に計上されます。</li>
 <li><strong>許容差の目安：</strong>1年目は件数が増えていく途中なので、月ごとの実績は1年目の平均と一致しません。累計か12か月平均で比べてください。</li>
 </ol>
 
-<h2 id="s10">10. 公式記載の曖昧な点・注意点</h2>
+<h2>10. 公式記載の曖昧な点・注意点</h2>
 <ol>
 <li><strong>Redshift（プロビジョンド）が対応表にない：</strong>AWS Backup の「リソース別の対応機能」表には Amazon Redshift Serverless（項目単位の復元のみ）があり、プロビジョンドの行がありません。一方、Redshift のバックアップ手順のページはプロビジョンドクラスターに対応しています。増分、コピー、論理エアギャップボールト、復元テストへの対応は表から判断できません。</li>
 <li><strong>Redshift の復元料金：</strong>AWS Backup の東京価格表に Redshift の復元単価はありません。保管料は Redshift 側で請求されますが、復元料金の有無は明記されていません。</li>
 <li><strong>計算ツールの式の範囲：</strong>今回確認したのは「毎日バックアップ」の欄だけです。毎時・毎週・毎月の式、ウォーム＋コールドが365日未満のときのコールド係数、増分型リソースでの日次変更率の使い方は未確認です。</li>
 <li><strong>コールド対応リソースの記載の違い：</strong>料金ページ、開発者ガイドのライフサイクルの表、対応表とで、挙げているリソースが少しずつ違います（CloudFormation、Aurora DSQL など）。</li>
-<li><strong>DynamoDB のバックアップサイズ：</strong>BackupSizeInBytes と TableSizeBytes（項目オーバーヘッドを含まない）の関係は明記されていません。</li>
+<li><strong>DynamoDB のバックアップサイズ：</strong><code>BackupSizeInBytes</code> と <code>TableSizeBytes</code>（項目オーバーヘッドを含まない）の関係は明記されていません。</li>
 <li><strong>リージョン間コピーのサイズ：</strong>DynamoDB は「どの階層でも増分なし」とされているため、コピーも毎回フルサイズと推定しました（コピー転送のサイズについての直接の記載はありません）。</li>
 <li><strong>早期削除の計算方法：</strong>「残り日数分の保管料を日割りで請求」とありますが、何日で割るか（30日か、その月の日数か）は明記されていません。</li>
 </ol>
 
-<h2 id="s11">11. 参考資料（公式）</h2>
+<h2>11. 参考資料（公式）</h2>
 <ul>
-<li>経営層向け説明版：<a href="executive/">AWS Backup コスト算出手法（経営層向け説明版）</a></li>
-<li>AWS Backup 料金：<a href="https://aws.amazon.com/backup/pricing/" target="_blank" rel="noopener">https://aws.amazon.com/backup/pricing/</a></li>
-<li>AWS 価格表 API（AWSBackup、東京）：<a href="https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSBackup/current/ap-northeast-1/index.json" target="_blank" rel="noopener">https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSBackup/current/ap-northeast-1/index.json</a></li>
-<li>同（AmazonRedshift、東京）：<a href="https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonRedshift/current/ap-northeast-1/index.json" target="_blank" rel="noopener">https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonRedshift/current/ap-northeast-1/index.json</a></li>
-<li>同（AmazonDynamoDB、東京）：<a href="https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonDynamoDB/current/ap-northeast-1/index.json" target="_blank" rel="noopener">https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonDynamoDB/current/ap-northeast-1/index.json</a></li>
-<li>Metering, costs, and billing：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/metering-and-billing.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/aws-backup/latest/devguide/metering-and-billing.html</a></li>
-<li>Feature availability by resource：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/backup-feature-availability.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/aws-backup/latest/devguide/backup-feature-availability.html</a></li>
-<li>Backup plan options（Lifecycle and storage tiers）：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/plan-options-and-configuration.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/aws-backup/latest/devguide/plan-options-and-configuration.html</a></li>
-<li>Backup creation by resource type（ジョブと増分）：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/creating-a-backup.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/aws-backup/latest/devguide/creating-a-backup.html</a></li>
-<li>Advanced DynamoDB backup：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/advanced-ddb-backup.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/aws-backup/latest/devguide/advanced-ddb-backup.html</a></li>
-<li>Amazon Redshift backups：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/redshift-backups.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/aws-backup/latest/devguide/redshift-backups.html</a>／Serverless：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/redshift-serverless-backups.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/aws-backup/latest/devguide/redshift-serverless-backups.html</a></li>
-<li>AWS Backup integration with Amazon Redshift：<a href="https://docs.aws.amazon.com/redshift/latest/mgmt/managing-aws-backup.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/redshift/latest/mgmt/managing-aws-backup.html</a></li>
-<li>Backup copy（コピージョブ）：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/recov-point-create-a-copy.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/aws-backup/latest/devguide/recov-point-create-a-copy.html</a></li>
-<li>Restore testing：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/restore-testing.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/aws-backup/latest/devguide/restore-testing.html</a></li>
-<li>Logically air-gapped vault：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/logicallyairgappedvault.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/aws-backup/latest/devguide/logicallyairgappedvault.html</a></li>
-<li>API：DescribeBackupJob（<a href="https://docs.aws.amazon.com/aws-backup/latest/APIReference/API_DescribeBackupJob.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/aws-backup/latest/APIReference/API_DescribeBackupJob.html</a>）／RecoveryPointByBackupVault（<a href="https://docs.aws.amazon.com/aws-backup/latest/APIReference/API_RecoveryPointByBackupVault.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/aws-backup/latest/APIReference/API_RecoveryPointByBackupVault.html</a>）／DescribeRecoveryPoint（<a href="https://docs.aws.amazon.com/aws-backup/latest/APIReference/API_DescribeRecoveryPoint.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/aws-backup/latest/APIReference/API_DescribeRecoveryPoint.html</a>）／Lifecycle（<a href="https://docs.aws.amazon.com/aws-backup/latest/APIReference/API_Lifecycle.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/aws-backup/latest/APIReference/API_Lifecycle.html</a>）／CopyJob（<a href="https://docs.aws.amazon.com/aws-backup/latest/APIReference/API_CopyJob.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/aws-backup/latest/APIReference/API_CopyJob.html</a>）</li>
-<li>Redshift：SVV_TABLE_INFO（<a href="https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_TABLE_INFO.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_TABLE_INFO.html</a>）／STV_PARTITIONS（<a href="https://docs.aws.amazon.com/redshift/latest/dg/r_STV_PARTITIONS.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/redshift/latest/dg/r_STV_PARTITIONS.html</a>）／DescribeStorage（<a href="https://docs.aws.amazon.com/redshift/latest/APIReference/API_DescribeStorage.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/redshift/latest/APIReference/API_DescribeStorage.html</a>）／Snapshot（<a href="https://docs.aws.amazon.com/redshift/latest/APIReference/API_Snapshot.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/redshift/latest/APIReference/API_Snapshot.html</a>）／CloudWatch metrics（<a href="https://docs.aws.amazon.com/redshift/latest/mgmt/metrics-listing.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/redshift/latest/mgmt/metrics-listing.html</a>）／Serverless metrics（<a href="https://docs.aws.amazon.com/redshift/latest/mgmt/serverless-audit-logging.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/redshift/latest/mgmt/serverless-audit-logging.html</a>）</li>
-<li>DynamoDB：TableDescription（<a href="https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_TableDescription.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_TableDescription.html</a>）／ExportDescription（<a href="https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_ExportDescription.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_ExportDescription.html</a>）／CloudWatch metrics（<a href="https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/metrics-dimensions.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/metrics-dimensions.html</a>）</li>
-<li>CloudWatch のデータ保持期間：<a href="https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/cloudwatch_concepts.html" target="_blank" rel="noopener">https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/cloudwatch_concepts.html</a></li>
-<li>Redshift 増分スナップショット課金（AWS Big Data Blog）：<a href="https://aws.amazon.com/blogs/big-data/unlock-cost-savings-with-incremental-snapshot-billing-for-amazon-redshift-serverless-and-amazon-redshift-rg/" target="_blank" rel="noopener">https://aws.amazon.com/blogs/big-data/unlock-cost-savings-with-incremental-snapshot-billing-for-amazon-redshift-serverless-and-amazon-redshift-rg/</a></li>
+<li>AWS Backup 料金：<a href="https://aws.amazon.com/backup/pricing/">https://aws.amazon.com/backup/pricing/</a></li>
+<li>AWS 価格表 API（AWSBackup、東京）：<a href="https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSBackup/current/ap-northeast-1/index.json">https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AWSBackup/current/ap-northeast-1/index.json</a></li>
+<li>同（AmazonRedshift、東京）：<a href="https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonRedshift/current/ap-northeast-1/index.json">https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonRedshift/current/ap-northeast-1/index.json</a></li>
+<li>同（AmazonDynamoDB、東京）：<a href="https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonDynamoDB/current/ap-northeast-1/index.json">https://pricing.us-east-1.amazonaws.com/offers/v1.0/aws/AmazonDynamoDB/current/ap-northeast-1/index.json</a></li>
+<li>Metering, costs, and billing：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/metering-and-billing.html">https://docs.aws.amazon.com/aws-backup/latest/devguide/metering-and-billing.html</a></li>
+<li>Feature availability by resource：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/backup-feature-availability.html">https://docs.aws.amazon.com/aws-backup/latest/devguide/backup-feature-availability.html</a></li>
+<li>Backup plan options（Lifecycle and storage tiers）：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/plan-options-and-configuration.html">https://docs.aws.amazon.com/aws-backup/latest/devguide/plan-options-and-configuration.html</a></li>
+<li>Backup creation by resource type（ジョブと増分）：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/creating-a-backup.html">https://docs.aws.amazon.com/aws-backup/latest/devguide/creating-a-backup.html</a></li>
+<li>Advanced DynamoDB backup：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/advanced-ddb-backup.html">https://docs.aws.amazon.com/aws-backup/latest/devguide/advanced-ddb-backup.html</a></li>
+<li>Amazon Redshift backups：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/redshift-backups.html">https://docs.aws.amazon.com/aws-backup/latest/devguide/redshift-backups.html</a>／Serverless：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/redshift-serverless-backups.html">https://docs.aws.amazon.com/aws-backup/latest/devguide/redshift-serverless-backups.html</a></li>
+<li>AWS Backup integration with Amazon Redshift：<a href="https://docs.aws.amazon.com/redshift/latest/mgmt/managing-aws-backup.html">https://docs.aws.amazon.com/redshift/latest/mgmt/managing-aws-backup.html</a></li>
+<li>Backup copy（コピージョブ）：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/recov-point-create-a-copy.html">https://docs.aws.amazon.com/aws-backup/latest/devguide/recov-point-create-a-copy.html</a></li>
+<li>Restore testing：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/restore-testing.html">https://docs.aws.amazon.com/aws-backup/latest/devguide/restore-testing.html</a></li>
+<li>Logically air-gapped vault：<a href="https://docs.aws.amazon.com/aws-backup/latest/devguide/logicallyairgappedvault.html">https://docs.aws.amazon.com/aws-backup/latest/devguide/logicallyairgappedvault.html</a></li>
+<li>API：<a href="https://docs.aws.amazon.com/aws-backup/latest/APIReference/API_DescribeBackupJob.html">DescribeBackupJob</a>／<a href="https://docs.aws.amazon.com/aws-backup/latest/APIReference/API_RecoveryPointByBackupVault.html">RecoveryPointByBackupVault</a>／<a href="https://docs.aws.amazon.com/aws-backup/latest/APIReference/API_DescribeRecoveryPoint.html">DescribeRecoveryPoint</a>／<a href="https://docs.aws.amazon.com/aws-backup/latest/APIReference/API_Lifecycle.html">Lifecycle</a>／<a href="https://docs.aws.amazon.com/aws-backup/latest/APIReference/API_CopyJob.html">CopyJob</a></li>
+<li>Redshift：<a href="https://docs.aws.amazon.com/redshift/latest/dg/r_SVV_TABLE_INFO.html">SVV_TABLE_INFO</a>／<a href="https://docs.aws.amazon.com/redshift/latest/dg/r_STV_PARTITIONS.html">STV_PARTITIONS</a>／<a href="https://docs.aws.amazon.com/redshift/latest/APIReference/API_DescribeStorage.html">DescribeStorage</a>／<a href="https://docs.aws.amazon.com/redshift/latest/APIReference/API_Snapshot.html">Snapshot</a>／<a href="https://docs.aws.amazon.com/redshift/latest/mgmt/metrics-listing.html">CloudWatch metrics</a>／<a href="https://docs.aws.amazon.com/redshift/latest/mgmt/serverless-audit-logging.html">Serverless metrics</a></li>
+<li>DynamoDB：<a href="https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_TableDescription.html">TableDescription</a>／<a href="https://docs.aws.amazon.com/amazondynamodb/latest/APIReference/API_ExportDescription.html">ExportDescription</a>／<a href="https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/metrics-dimensions.html">CloudWatch metrics</a></li>
+<li>CloudWatch のデータ保持期間：<a href="https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/cloudwatch_concepts.html">https://docs.aws.amazon.com/AmazonCloudWatch/latest/monitoring/cloudwatch_concepts.html</a></li>
+<li>Redshift 増分スナップショット課金（AWS Big Data Blog）：<a href="https://aws.amazon.com/blogs/big-data/unlock-cost-savings-with-incremental-snapshot-billing-for-amazon-redshift-serverless-and-amazon-redshift-rg/">https://aws.amazon.com/blogs/big-data/unlock-cost-savings-with-incremental-snapshot-billing-for-amazon-redshift-serverless-and-amazon-redshift-rg/</a></li>
 </ul>
+
 </article>
 </main>
 <footer>AWS公式公開情報に基づく調査資料。料金は変更されるため、見積もり時は公式料金ページと AWS Pricing Calculator で再確認すること。</footer>
