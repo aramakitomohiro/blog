@@ -26,20 +26,110 @@
 <h2 id="s7"><strong>2. 月額コストの計算式（1テーブルあたり）</strong></h2>
 <p>読み書きは「単位」で数えます。読み取りは4KBごと、書き込みは1KBごとに1単位（端数は切り上げ）。最新データを保証する読み取りは2倍、通常の読み取りはその半分、一括処理（トランザクション）はさらに2倍になります（図3）。</p>
 <figure><img src="../images/dynamodb_fig3_capacity_units.png" alt="図3 読み書きの単位の数え方"><figcaption>図3 読み書きの単位の数え方</figcaption></figure>
+<aside class="easy" id="easy-ddbx-unit" aria-label="やさしい説明">
+<p class="easy-kicker">やさしい説明</p>
+<p class="easy-title">4KB、1KBの箱に入れてから数える</p>
+<p>読み取りは4KBごとに1箱、書き込みは1KBごとに1箱です。少しでもはみ出したら、次の箱に切り上げます。最新を保証する読み取りは箱の数がそのまま、ふつうの読み取りはその半分、まとめて行う処理は2倍です。</p>
+<div class="ex">
+<p><span class="ex-label">説明用のかんたんな数字</span></p>
+<ol>
+<li>3KBの強い読み取りは、4KBに足りないので1単位です。</li>
+<li>5KBの強い読み取りは、8KBに切り上げて 8 ÷ 4 ＝ 2単位です。</li>
+<li>ふつうの読み取りで2単位なら、半分の1単位です。</li>
+<li>500バイトの書き込みは、1KBに満たないので1単位です。</li>
+</ol>
+<p class="ex-note">ここは単位の数え方です。円は付けていません。</p>
+</div>
+</aside>
+
 <h3 id="s10"><strong>2-1. オンデマンド方式（使った分だけ払う・AWS推奨のデフォルト）</strong></h3>
 <div class="table-wrap"><table><tr><th><strong>ステップ</strong></th><th><strong>計算式</strong></th><th><strong>数字の意味・入手先</strong></th></tr><tr><td>ステップ1</td><td>読み取り料金 ＝ 月の読み取り単位数 ÷ 100万 × 100万単位あたりの単価</td><td>単位数：監視ツール（CloudWatch）の読み取り消費量（ConsumedReadCapacityUnits）の月合計</td></tr><tr><td>ステップ2</td><td>書き込み料金 ＝（テーブル＋インデックスの月の書き込み単位数）÷ 100万 × 100万単位あたりの単価</td><td>CloudWatchの書き込み消費量（ConsumedWriteCapacityUnits）。インデックス分も合算</td></tr><tr><td>ステップ3</td><td>保管料金 ＝ 保管量（GB）× 1GBあたりの月額単価</td><td>保管量：AWS管理画面／DescribeTable（TableSizeBytes）。※請求上は1項目ごとに100バイトの管理領域が加わる</td></tr><tr><td>ステップ4</td><td>バックアップ料金 ＝ 3章の計算結果</td><td>3章を参照</td></tr><tr><td>ステップ5</td><td>転送料金 ＋ 追加機能の料金</td><td>使わなければ0円。複数リージョン複製では、各リージョンで書き込み料金が発生</td></tr><tr class="total"><td><strong>合計</strong></td><td><strong>月額コスト ＝ ステップ1 ＋ ステップ2 ＋ ステップ3 ＋ ステップ4 ＋ ステップ5</strong></td><td></td></tr></table></div>
+<aside class="easy" id="easy-ddbx-od" aria-label="やさしい説明">
+<p class="easy-kicker">やさしい説明</p>
+<p class="easy-title">使った分の料金を、5つ足す</p>
+<p>読み書きは、月の単位数を100万で割ってから、100万単位の値段をかけます。100万で割るのは、「100万個で1セット」と数えるためです。保管はGB × 月額、バックアップは3章、転送や追加機能は使ったときだけ足します。</p>
+<div class="ex">
+<p><span class="ex-label">説明用のかんたんな数字</span></p>
+<ol>
+<li>読み取り200万単位 ÷ 100万 ＝ 2セット。1セット10円なら20円。</li>
+<li>書き込み100万単位 ÷ 100万 ＝ 1セット。10円。</li>
+<li>保管100GB × 10円 ＝ 1,000円。</li>
+<li>バックアップ2,000円、転送0円。</li>
+<li>合計 20 ＋ 10 ＋ 1,000 ＋ 2,000 ＋ 0 ＝ 3,030円。</li>
+</ol>
+<p class="ex-note">10円と2,000円は説明用です。本当の料金表の金額ではありません。</p>
+</div>
+</aside>
+
 <h3 id="s12"><strong>2-2. プロビジョンド方式（処理能力を事前に確保する）</strong></h3>
 <div class="table-wrap"><table><tr><th><strong>ステップ</strong></th><th><strong>計算式</strong></th><th><strong>数字の意味・入手先</strong></th></tr><tr><td>ステップ1</td><td>読み書き料金 ＝（確保した読み取り容量（RCU）× 時間単価 ＋ 確保した書き込み容量（WCU）× 時間単価）× 月の時間数</td><td>「使った量」ではなく「確保した量」に課金。自動調整（Auto Scaling）利用時は時間ごとの設定値で計算（CloudWatchのProvisioned〜CapacityUnits）</td></tr><tr><td>ステップ2〜4</td><td>保管料金・バックアップ料金・転送／追加機能はオンデマンドと同じ</td><td></td></tr><tr class="total"><td><strong>合計</strong></td><td><strong>月額コスト ＝ ステップ1 ＋ ステップ2〜4</strong></td><td></td></tr></table></div>
+<aside class="easy" id="easy-ddbx-prov" aria-label="やさしい説明">
+<p class="easy-kicker">やさしい説明</p>
+<p class="easy-title">確保した席 × 時間 × 単価</p>
+<p>プロビジョンド方式は、来た客の数ではなく、用意した席の数で払います。席が空いていても、用意しているあいだは料金があります。保管・バックアップ・転送は、オンデマンド方式と同じ足し算です。</p>
+<p>1年・3年の予約は定期券です。使わない月も、予約した席の分は払います。</p>
+<div class="ex">
+<p><span class="ex-label">説明用のかんたんな数字</span></p>
+<ol>
+<li>読み取りの席10 × 1時間1円 × 720時間 ＝ 7,200円。</li>
+<li>書き込みの席5 × 1時間2円 × 720時間。5 × 2 × 720 ＝ 7,200円。</li>
+<li>読み書きは 7,200 ＋ 7,200 ＝ 14,400円。</li>
+</ol>
+<p class="ex-note">1円と2円は説明用です。本当の料金表の金額ではありません。</p>
+</div>
+</aside>
+
 <p>※1年・3年の予約購入（リザーブド容量、100単位ごと）で割引されますが、使わなくても予約分は課金されます。</p>
 <h2 id="s15"><strong>3. バックアップ料金の計算方法（詳細）</strong></h2>
 <p>DynamoDBのバックアップには、手動（オンデマンド）バックアップ、PITR（継続バックアップ）、AWS Backupによる管理、S3へのエクスポートがあり、復元（リストア）にも料金がかかります。それぞれ次の手順で計算し、合計します。</p>
 <figure><img src="../images/dynamodb_fig2_backup_flow.png" alt="図2 バックアップ料金の計算の流れ"><figcaption>図2 バックアップ料金の計算の流れ</figcaption></figure>
 <div class="table-wrap"><table><tr><th><strong>ステップ</strong></th><th><strong>計算式</strong></th><th><strong>数字の意味・入手先</strong></th></tr><tr><td>ステップ1</td><td>手動バックアップ料金 ＝（各バックアップのサイズ × 保管日数 ÷ 月の日数 の合計）× 1GBあたり月額単価</td><td>毎回フルサイズで保存され、削除するまで課金。毎月1日に1か月分が計上され、月の途中で削除すると日割りで減額。サイズ：管理画面のバックアップ一覧（目安＝テーブルのサイズ × 保管数）</td></tr><tr><td>ステップ2</td><td>PITR料金 ＝ テーブルのサイズ（GB）× 1GBあたり月額単価</td><td>戻せる日数（1〜35日）を短くしても料金は同じ。無効にするまで課金。サイズ：管理画面（テーブル＋同じキーのインデックス）</td></tr><tr><td>ステップ3</td><td>復元料金 ＝ 復元したデータ量（GB）× 1GBあたり単価</td><td>復元する場合のみ。検索用インデックス（GSI）も含めた量に課金</td></tr><tr><td>ステップ4</td><td>AWS Backup料金 ＝ 通常保管量 × 単価 ＋ コールド保管量 × 単価 ＋ コピー量 × 単価</td><td>使う場合のみ。AWS Backupの料金として請求。コールド保管は最低90日分の料金が発生</td></tr><tr><td>ステップ5</td><td>エクスポート料金 ＝ 書き出し量（GB）× 単価 ＋ S3料金</td><td>行う場合のみ</td></tr><tr class="total"><td><strong>合計</strong></td><td><strong>月のバックアップ料金 ＝ ステップ1 ＋ ステップ2 ＋ ステップ3 ＋ ステップ4 ＋ ステップ5</strong></td><td></td></tr></table></div>
+<aside class="easy" id="easy-ddbx-bak" aria-label="やさしい説明">
+<p class="easy-kicker">やさしい説明</p>
+<p class="easy-title">手動バックアップは、コピーした冊数だけ増える</p>
+<p>手動バックアップは、変わるページだけを足す方式ではありません。取るたびにノート全部をコピーし、残している冊数を足します。月の途中で捨てた冊は、置いていた日数 ÷ 月の日数、だけ数えます。</p>
+<p>PITRの料金は、戻せる日数を短くしても下がりません。ノートの大きさ × 月額、です。復元は、戻した量 × 単価で、検索用のインデックスも含みます。</p>
+<p>AWS Backupの奥の棚（コールド）は家賃が安い代わりに、戻すときは割高で、取り出すのにも時間がかかり、最低90日分の料金が必要です。</p>
+<div class="ex">
+<p><span class="ex-label">説明用のかんたんな数字</span></p>
+<ol>
+<li>100GBを2冊、30日ずっと置く。100 × 2 ＝ 200GB・月。1GB 10円なら2,000円。</li>
+<li>100GBを30日のうち20日だけ置くと、100 × 20 ＝ 2,000、2,000 ÷ 30 ＝ 66.666…GB・月です。</li>
+<li>PITRが100GBなら、日数を変えても100 × 10円 ＝ 1,000円。</li>
+</ol>
+<p class="ex-note">10円は説明用です。本当の料金表の金額ではありません。</p>
+</div>
+</aside>
+
 <h2 id="s19"><strong>4. 計算例（説明用）</strong></h2>
 <p><strong><span class="warn">※説明用の仮の数値です。実際の単価は公式料金ページ（<a href="https://aws.amazon.com/dynamodb/pricing/" target="_blank" rel="noopener">https://aws.amazon.com/dynamodb/pricing/</a>）で確認してください。</span></strong></p>
 <p>前提（容量はAWS公式料金ページ・開発者ガイドの例）：プロビジョンド方式。1秒あたり80回の読み取り（3KBの項目・最新保証）→ 80RCU、1秒あたり100回の書き込み（512バイトの項目）→ 100WCU。テーブルサイズ29GB、PITR有効。手動バックアップは合計60GBを保管し、10日目に15GB分を削除（30日の月）。月末に29GBを1回復元。月730時間。単価はすべて仮です。</p>
 <div class="table-wrap"><table><tr><th><strong>ステップ</strong></th><th><strong>計算</strong></th><th><strong>結果</strong></th></tr><tr><td>読み取り料金</td><td>80RCU × 730時間 × 0.02円<span class="provisional">（仮）</span></td><td>1,168円<span class="provisional">（仮）</span></td></tr><tr><td>書き込み料金</td><td>100WCU × 730時間 × 0.1円<span class="provisional">（仮）</span></td><td>7,300円<span class="provisional">（仮）</span></td></tr><tr><td>保管料金</td><td>29GB × 40円<span class="provisional">（仮）</span></td><td>1,160円<span class="provisional">（仮）</span></td></tr><tr><td>手動バックアップ</td><td>（60GB － 15GB × 20日 ÷ 30日）＝ 50GB・月 × 15円<span class="provisional">（仮）</span></td><td>750円<span class="provisional">（仮）</span></td></tr><tr><td>PITR</td><td>29GB × 30円<span class="provisional">（仮）</span></td><td>870円<span class="provisional">（仮）</span></td></tr><tr><td>復元</td><td>29GB × 23円<span class="provisional">（仮）</span></td><td>667円<span class="provisional">（仮）</span></td></tr><tr class="total"><td><strong>合計</strong></td><td><strong>1,168 ＋ 7,300 ＋ 1,160 ＋ 750 ＋ 870 ＋ 667</strong></td><td><strong>11,915円／月<span class="provisional">（仮）</span></strong></td></tr></table></div>
 <p>※バックアップ関連（手動バックアップ・PITR・復元）の小計は2,287円<span class="provisional">（仮）</span>。復元しない月は667円<span class="provisional">（仮）</span>が不要です。</p>
+<aside class="easy" id="easy-ddbx-ex4" aria-label="やさしい説明">
+<p class="easy-kicker">やさしい説明</p>
+<p class="easy-title">4章の表を、一行ずつかける</p>
+<p>表の円は、このページが「仮」と書いている単価です。本当の料金表の金額ではありません。3KBの強い読み取りは4KB未満なので1回1単位、80回なら80単位です。512バイトの書き込みは1KB未満なので1回1単位、100回なら100単位です。</p>
+<div class="real">
+<p><span class="real-label">このページの表（仮の単価、730時間）</span></p>
+<ol>
+<li>読み取り：80 × 730。80 × 700 ＝ 56,000。80 × 30 ＝ 2,400。合計58,400。0.02は100分の2なので、58,400 ÷ 100 ＝ 584、584 × 2 ＝ 1,168円。</li>
+<li>書き込み：100 × 730 ＝ 73,000。0.1は10分の1なので 73,000 ÷ 10 ＝ 7,300円。</li>
+<li>保管：29 × 40。30 × 40 ＝ 1,200から40を引いて1,160円。</li>
+<li>手動バックアップ：15 × 20 ＝ 300。300 ÷ 30 ＝ 10。60 − 10 ＝ 50GB・月。50 × 15円 ＝ 750円。</li>
+<li>PITR：29 × 30 ＝ 870円。</li>
+<li>復元：29 × 20 ＝ 580、29 × 3 ＝ 87、合計667円。</li>
+<li>合計：1,168 ＋ 7,300 ＝ 8,468。8,468 ＋ 1,160 ＝ 9,628。9,628 ＋ 750 ＝ 10,378。10,378 ＋ 870 ＝ 11,248。11,248 ＋ 667 ＝ 11,915円。</li>
+<li>バックアップの小計は 750 ＋ 870 ＋ 667。750 ＋ 870 ＝ 1,620。1,620 ＋ 667 ＝ 2,287円。復元しない月は、11,915 − 667 ＝ 11,248円です。</li>
+</ol>
+</div>
+<div class="ex">
+<p><span class="ex-label">説明用のかんたんな数字</span></p>
+<p>保管だけを小さい数で見ると、100GB × 10円 ＝ 1,000円です。読み取りは、1単位を100万回、100万単位あたり10円なら10円です。</p>
+<p class="ex-note">この10円は説明用です。表の0.02円や40円は、このページが使っている仮の単価です。</p>
+</div>
+</aside>
+
 <h2 id="s24"><strong>5. 注意点</strong></h2>
 <ul><li>公式ページの記載が明確でない点があります：①PITRの課金サイズが月平均か時点値か（公式の例で27GB（平均）と29GBの両方の書き方がある）、②1項目ごとの管理領域（100バイト）がバックアップ・PITRのサイズに含まれるか、③AWS Backupで管理する場合の容量の数え方（DynamoDBの資料に記載なし）、④別リージョンにコピーした先での保管料金の扱い。</li><li>バックアップはインデックス（GSI）を含みませんが、復元はインデックスを含めて課金されるため、復元料金は想定より大きくなることがあります。</li><li>手動バックアップは毎月1日に1か月分がまとめて計上されるため、請求画面では1日に山ができます（仕様です）。</li><li>見積もりは「多めに（保守的に）」行い、運用開始後に実際の請求額（Cost Explorer）と照合して補正することを推奨します。単価はリージョンや時期で変わるため、最終的な金額は必ず公式料金ページとAWS Pricing Calculatorで確認してください。</li></ul>
 <h2 id="s26"><strong>参考</strong></h2>
